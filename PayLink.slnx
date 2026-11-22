@@ -1,0 +1,26 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PayLink.Accounts/PayLink.Accounts.csproj" />
+    <Project Path="src/PayLink.Api/PayLink.Api.csproj" />
+    <Project Path="src/PayLink.BillerIntegration/PayLink.BillerIntegration.csproj" />
+    <Project Path="src/PayLink.Catalog/PayLink.Catalog.csproj" />
+    <Project Path="src/PayLink.Fees/PayLink.Fees.csproj" />
+    <Project Path="src/PayLink.Fraud/PayLink.Fraud.csproj" />
+    <Project Path="src/PayLink.Notifications/PayLink.Notifications.csproj" />
+    <Project Path="src/PayLink.Payments/PayLink.Payments.csproj" />
+    <Project Path="src/PayLink.Reconciliation/PayLink.Reconciliation.csproj" />
+    <Project Path="src/PayLink.SharedKernel/PayLink.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PayLink.Accounts.Tests/PayLink.Accounts.Tests.csproj" />
+    <Project Path="tests/PayLink.Api.IntegrationTests/PayLink.Api.IntegrationTests.csproj" />
+    <Project Path="tests/PayLink.BillerIntegration.Tests/PayLink.BillerIntegration.Tests.csproj" />
+    <Project Path="tests/PayLink.Catalog.Tests/PayLink.Catalog.Tests.csproj" />
+    <Project Path="tests/PayLink.Fees.Tests/PayLink.Fees.Tests.csproj" />
+    <Project Path="tests/PayLink.Fraud.Tests/PayLink.Fraud.Tests.csproj" />
+    <Project Path="tests/PayLink.Notifications.Tests/PayLink.Notifications.Tests.csproj" />
+    <Project Path="tests/PayLink.Payments.Tests/PayLink.Payments.Tests.csproj" />
+    <Project Path="tests/PayLink.Reconciliation.Tests/PayLink.Reconciliation.Tests.csproj" />
+    <Project Path="tests/PayLink.SharedKernel.Tests/PayLink.SharedKernel.Tests.csproj" />
+  </Folder>
+</Solution>

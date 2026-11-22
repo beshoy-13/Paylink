@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PayLink.SharedKernel\PayLink.SharedKernel.csproj" />
+    <ProjectReference Include="..\PayLink.Accounts\PayLink.Accounts.csproj" />
+    <ProjectReference Include="..\PayLink.Catalog\PayLink.Catalog.csproj" />
+    <ProjectReference Include="..\PayLink.Payments\PayLink.Payments.csproj" />
+    <ProjectReference Include="..\PayLink.BillerIntegration\PayLink.BillerIntegration.csproj" />
+    <ProjectReference Include="..\PayLink.Fees\PayLink.Fees.csproj" />
+    <ProjectReference Include="..\PayLink.Notifications\PayLink.Notifications.csproj" />
+    <ProjectReference Include="..\PayLink.Fraud\PayLink.Fraud.csproj" />
+    <ProjectReference Include="..\PayLink.Reconciliation\PayLink.Reconciliation.csproj" />
+  </ItemGroup>
+
+</Project>
