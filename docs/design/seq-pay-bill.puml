@@ -1,0 +1,112 @@
+@startuml seq-pay-bill
+title PayLink - Pay a Bill (ElectroCo) - Section 2.2, steps 1 to 8
+autonumber
+
+' OPEN QUESTIONS
+' 1. Step 1: which module identifies the customer and checks the verification level
+'    (assumed: Api authenticates, Accounts returns the level)?
+' 2. Where is the payment created in state Initiated (assumed: Payments, after the fee total is known)?
+' 3. Do the 5 / 10,000 EGP single-payment limits apply to the bill amount or to bill plus fee?
+' 4. Biller refuses: the brief says Failed and the hold is released, while the state table says
+'    Failed -> Refunded happens when the hold is released. Is the release done here or only in seq-refund-failed?
+' 5. Timeout: is the "being processed" message to the customer an API response only or also a notification?
+' 6. Which module records agent commission and fee income (assumed: Accounts, with the amounts from Fees)?
+' 7. Is the idempotency key checked by Api or by Payments (not shown, not part of steps 1 to 8)?
+
+participant CustomerApp
+participant Api
+participant Payments
+participant Fraud
+participant Fees
+participant "Accounts (Wallet)" as Accounts
+participant BillerIntegration
+participant ElectroCoMock
+participant Notifications
+
+== Step 1: Login and limits ==
+CustomerApp -> Api : login(credentials)
+Api -> Accounts : getVerificationLevel(customerId)
+Accounts --> Api : verificationLevel
+Api --> CustomerApp : session established
+
+== Step 2: Bill inquiry ==
+CustomerApp -> Api : inquireBill(billerService, meterNumber)
+Api -> BillerIntegration : inquire(meterNumber)
+BillerIntegration -> ElectroCoMock : GET bill(meterNumber)
+ElectroCoMock --> BillerIntegration : amountDue = 350.00 EGP
+BillerIntegration --> Api : bill(350.00 EGP)
+
+== Step 3: Fee and total ==
+Api -> Fees : calculateFee(ElectroCo, 350.00)
+Fees --> Api : fee = 2.50 EGP
+Api --> CustomerApp : amount 350.00 + fee 2.50 = total 352.50 EGP
+
+CustomerApp -> Api : pay(total 352.50 EGP, idempotencyKey)
+Api -> Payments : createPayment(customerId, bill, fee, idempotencyKey)
+Payments --> Api : payment [Initiated]
+
+== Step 4: Fraud checks ==
+Payments -> Fraud : check(customerId, 352.50 EGP)
+alt Fraud check fails
+    Fraud --> Payments : rejected(reason)
+    Payments -> Payments : transition Initiated -> Rejected
+    Payments --> Api : payment [Rejected] + reason
+    Api --> CustomerApp : rejected(reason)
+else Fraud check passes
+    Fraud --> Payments : passed
+
+    == Step 5: Hold the money ==
+    Payments -> Accounts : placeHold(walletId, 352.50 EGP, paymentId)
+    alt Insufficient funds
+        Accounts --> Payments : insufficientFunds
+        Payments -> Payments : transition Initiated -> Rejected
+        Payments --> Api : payment [Rejected] + reason
+        Api --> CustomerApp : rejected(insufficient funds)
+    else Funds available
+        Accounts --> Payments : holdPlaced (ledger entries written)
+        Payments -> Payments : transition Initiated -> FundsHeld
+
+        == Step 6: Call the biller ==
+        Payments -> BillerIntegration : pay(paymentId as unique reference, 350.00 EGP)
+        Payments -> Payments : transition FundsHeld -> SentToBiller
+        BillerIntegration -> ElectroCoMock : POST payment(reference, 350.00)
+
+        == Step 7: Confirmation ==
+        alt Biller confirms (paid)
+            ElectroCoMock --> BillerIntegration : paid
+            BillerIntegration --> Payments : confirmed
+            Payments -> Payments : transition SentToBiller -> Completed
+            Payments -> Accounts : convertHoldToCharge(holdId)
+            Accounts --> Payments : charged
+            Payments -> Accounts : creditFeeIncome(2.50 EGP)
+            Accounts --> Payments : done
+            opt Agent involved
+                Payments -> Accounts : creditAgentCommission(agentWalletId)
+                Accounts --> Payments : done
+            end
+
+            == Step 8: Receipt ==
+            Payments -> Notifications : send SMS + push (payment completed)
+            Notifications --> Payments : accepted
+            Payments --> Api : payment [Completed]
+            Api --> CustomerApp : receipt
+        else Biller refuses
+            ElectroCoMock --> BillerIntegration : refused(errorCode)
+            BillerIntegration --> Payments : refused(errorCode)
+            Payments -> Payments : transition SentToBiller -> Failed
+            Payments -> Accounts : releaseHold(holdId)
+            Accounts --> Payments : holdReleased
+            Payments -> Notifications : send SMS + push (payment failed, reason)
+            Notifications --> Payments : accepted
+            Payments --> Api : payment [Failed]
+            Api --> CustomerApp : failed(reason)
+        else No answer within 10 seconds (timeout)
+            BillerIntegration --> Payments : timeout
+            Payments -> Payments : transition SentToBiller -> Unknown
+            note right of Accounts : Hold remains active.\nNo refund while Unknown.
+            Payments --> Api : payment [Unknown]
+            Api --> CustomerApp : payment is being processed
+        end
+    end
+end
+@enduml

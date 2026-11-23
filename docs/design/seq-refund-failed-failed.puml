@@ -1,0 +1,33 @@
+@startuml seq-refund-failed
+title PayLink - Refund a Failed Payment
+autonumber
+
+' OPEN QUESTIONS
+' 1. What triggers the refund (automatic after Failed, a scheduler, or a support action)?
+'    Assumed: Payments starts it automatically. FR-27 (customer-requested refund of a Completed payment) is a different flow.
+' 2. seq-pay-bill also releases the hold on "biller refuses". Which diagram owns the release?
+'    Assumed here: the release happens in this flow and the pay-bill diagram should be aligned with it.
+' 3. There is no audit module in the module list. Assumed: audit records go through PayLink.SharedKernel (AuditEntry).
+'    Please confirm which module owns the audit_log table.
+' 4. Which "who" is recorded in the audit entry for an automatic refund (system actor)?
+' 5. The exact ledger entry types for the hold release are not defined in the brief. The names below are placeholders.
+
+participant Payments
+participant "Accounts (Wallet)" as Accounts
+participant Notifications
+participant "SharedKernel (AuditEntry)" as SharedKernel
+
+Payments -> Payments : load payment [Failed]
+alt Payment is not in state Failed (for example Unknown)
+    Payments -> Payments : refuse transition (no refund)
+else Payment is in state Failed
+    Payments -> Accounts : releaseHold(holdId, paymentId)
+    Accounts -> Accounts : write compensating ledger entries\n(held decreases, available increases by the held amount)
+    Accounts --> Payments : holdReleased
+    Payments -> Payments : transition Failed -> Refunded
+    Payments -> Notifications : send SMS + push (payment refunded)
+    Notifications --> Payments : accepted
+    Payments -> SharedKernel : writeAuditEntry(who, when, why = refund of failed payment)
+    SharedKernel --> Payments : recorded
+end
+@enduml
