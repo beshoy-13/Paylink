@@ -1,27 +1,33 @@
 @startuml seq-pay-bill
-title PayLink - Pay a Bill (ElectroCo) - Section 2.2, steps 1 to 8
-autonumber
+title PayLink - Pay a Bill (ElectroCo) - Section 2.2, steps 1 to 8, plus Unknown re-query
 
 ' DECISIONS (see requirements.md, Ambiguities and decisions)
-' - Api is wiring only: it authenticates and forwards. Payments orchestrates inquiry, fee and payment.
-' - Idempotency key is checked by Payments first (FR-10, hard case 1): no new charge or hold.
-' - Min/max amount (5 / 10,000 EGP, bill amount only) is validated by Payments BEFORE the payment
-'   is created: error with a reason, no payment, no hold.
-' - Daily limit, velocity and blocked account are rules in the Fraud chain and give Rejected.
-' - Accounts writes each ledger entry and its audit record in ONE DB transaction (FR-25).
-' - Notifications are asynchronous (in-process event): a failure never changes the payment (hard case 5).
+' - Participant names match the project folders. ElectroCoMock lives in /mocks (external to the monolith).
+' - PayLink.Api is wiring only: it authenticates and forwards. PayLink.Payments orchestrates.
+' - Inquiry failures (missing field, bill not found, biller timeout) return an error:
+'   no payment, no hold, no ledger entry.
+' - Pay order: idempotency check, biller/service active check, min/max validation (bill amount only),
+'   then the payment is created. A refusal before creation creates nothing.
+' - Idempotency record stores a fingerprint of the request data. A concurrent insert that hits the
+'   unique key is treated as "in progress".
+' - Daily limit, velocity and blocked account are rules in PayLink.Fraud and give Rejected.
+' - PayLink.Accounts writes each ledger entry and its audit record in ONE transaction (FR-25).
+' - PayLink.Notifications is asynchronous (in-process event): a failure never changes the payment.
 ' - Failed -> Refunded (hold released once) is defined only in seq-refund-failed.
+' - TopUpNet callbacks (hard case 6) are a separate flow, not shown here: the payment waits in
+'   SentToBiller and the callback is handled by PayLink.BillerIntegration and PayLink.Payments (US-18).
 
+actor Scheduler
 participant CustomerApp
-participant Api
-participant Payments
-participant Catalog
-participant Fraud
-participant Fees
-participant "Accounts (Wallet)" as Accounts
-participant BillerIntegration
+participant "PayLink.Api" as Api
+participant "PayLink.Payments" as Payments
+participant "PayLink.Catalog" as Catalog
+participant "PayLink.Fraud" as Fraud
+participant "PayLink.Fees" as Fees
+participant "PayLink.Accounts" as Accounts
+participant "PayLink.BillerIntegration" as BillerIntegration
 participant ElectroCoMock
-participant Notifications
+participant "PayLink.Notifications" as Notifications
 
 == Step 1: Login and limits ==
 CustomerApp -> Api : login(credentials)
@@ -29,47 +35,72 @@ Api -> Accounts : authenticate + getVerificationLevel(customerId)
 Accounts --> Api : verificationLevel
 Api --> CustomerApp : session established
 
-== Steps 2 and 3: Bill inquiry, fee and total ==
-CustomerApp -> Api : inquireBill(billerServiceId, meterNumber)
-Api -> Payments : inquire(billerServiceId, meterNumber)
+== Steps 2 and 3: Bill inquiry, fee and total (creates no payment, no hold, no ledger entry) ==
+CustomerApp -> Api : inquireBill(billerServiceId, inputFields)
+Api -> Payments : inquire(billerServiceId, inputFields)
 Payments -> Catalog : getService(billerServiceId)
-Catalog --> Payments : service (active, required fields, min/max)
-alt Biller or service disabled
-    Payments --> Api : error(biller disabled)
-    Api --> CustomerApp : error(biller disabled)
+Catalog --> Payments : service (active?, required fields)
+alt Biller or service not found or disabled
+    Payments --> Api : error(biller unavailable)
+    Api --> CustomerApp : error(biller unavailable)
 else Biller active
-    Payments -> BillerIntegration : inquire(ElectroCo, meterNumber)
-    BillerIntegration -> ElectroCoMock : GET bill(meterNumber)
-    ElectroCoMock --> BillerIntegration : amountDue = 350.00 EGP
-    BillerIntegration --> Payments : bill(350.00 EGP)
-    Payments -> Fees : calculateFee(ElectroCo, 350.00)
-    Fees --> Payments : fee = 2.50 EGP
-    Payments --> Api : amount 350.00 + fee 2.50 = total 352.50 EGP
-    Api --> CustomerApp : amount 350.00 + fee 2.50 = total 352.50 EGP
+    alt A required field is missing (e.g. meterNumber)
+        Payments --> Api : error(missing field: meterNumber)
+        Api --> CustomerApp : error(missing field), no amounts shown
+    else All required fields present
+        Payments -> BillerIntegration : inquire(ElectroCo, meterNumber)
+        BillerIntegration -> ElectroCoMock : GET bill(meterNumber)
+        alt Biller has no bill for this meter number
+            ElectroCoMock --> BillerIntegration : not found
+            BillerIntegration --> Payments : billNotFound
+            Payments --> Api : error(bill not found)
+            Api --> CustomerApp : error(bill not found), no amounts shown
+        else No answer within 10 seconds
+            BillerIntegration --> Payments : timeout
+            Payments --> Api : error(try again later)
+            Api --> CustomerApp : error(try again later), no amounts shown
+        else Bill found
+            ElectroCoMock --> BillerIntegration : amountDue = 350.00 EGP
+            BillerIntegration --> Payments : bill(350.00 EGP)
+            Payments -> Fees : calculateFee(ElectroCo, 350.00)
+            Fees --> Payments : fee = 2.50 EGP
+            Payments --> Api : quote: amount 350.00 + fee 2.50 = total 352.50 EGP
+            Api --> CustomerApp : quote: amount 350.00 + fee 2.50 = total 352.50 EGP
+        end
+    end
 end
 
 == Pay ==
-CustomerApp -> Api : pay(billId, idempotencyKey)
-Api -> Payments : pay(customerId, billId, idempotencyKey)
-Payments -> Payments : look up idempotencyKey
-alt Key already used (hard case 1)
-    Payments --> Api : original payment result (no new charge, no new hold)
+CustomerApp -> Api : pay(quoteId, idempotencyKey)
+Api -> Payments : pay(customerId, quoteId, idempotencyKey)
+Payments -> Payments : look up idempotencyKey + compare request fingerprint
+alt Key used with DIFFERENT request data
+    Payments --> Api : error(idempotency key reused with different data), nothing created
+    Api --> CustomerApp : error
+else Key used, first request still in progress
+    Payments --> Api : in progress status, nothing created
+    Api --> CustomerApp : in progress
+else Key used, first request already finished (any state)
+    Payments --> Api : original payment result (no new payment, charge or hold)
     Api --> CustomerApp : original result
 else New key
-    note over Payments, Catalog : Min/max validation (bill amount only), before the payment exists
-    Payments -> Catalog : getLimits(billerServiceId)
-    Catalog --> Payments : min 5.00 / max 10,000.00 EGP
-    alt Bill amount below 5.00 or above 10,000.00
-        Payments --> Api : error(reason: below minimum / above maximum), no payment created
+    note over Payments, Catalog : Re-check before the payment exists
+    Payments -> Catalog : isActive(billerServiceId) + getLimits(billerServiceId)
+    Catalog --> Payments : active?, min 5.00 / max 10,000.00 EGP
+    alt Biller or service disabled since the inquiry
+        Payments --> Api : error(biller disabled), no payment, no hold
+        Api --> CustomerApp : error(biller disabled)
+    else Bill amount below 5.00 or above 10,000.00 EGP
+        Payments --> Api : error(below minimum / above maximum), no payment, no hold
         Api --> CustomerApp : error(reason)
-    else Amount within limits
-        Payments -> Payments : create payment [Initiated]\nstore idempotencyKey (unique)
+    else Biller active and amount within limits
+        Payments -> Payments : create payment [Initiated]\nstore idempotencyKey (unique index) with fingerprint
 
         note over Payments, Fraud : Step 4: Fraud checks (chain: daily limit, velocity, blocked account)
-        Payments -> Fraud : check(customerId, amount 350.00, level)
+        Payments -> Fraud : check(customerId, amount 350.00, verificationLevel)
         alt Velocity rule fails (more than 5 payments in 60 s)
             Fraud -> Accounts : blockAccount(customerId, 10 minutes, reason = "velocity")
-            Accounts --> Fraud : blocked (ledger-free change + audit record)
+            Accounts --> Fraud : blocked (block + audit record)
             Fraud --> Payments : rejected(reason)
             Payments -> Payments : transition Initiated -> Rejected
             Payments --> Api : payment [Rejected] + reason
@@ -122,7 +153,7 @@ else New key
                 else No answer within 10 seconds (hard case 2)
                     BillerIntegration --> Payments : timeout
                     Payments -> Payments : transition SentToBiller -> Unknown
-                    note right of Accounts : Hold stays active.\nNo refund while Unknown.\nRe-query after 1, 5, 15 min.
+                    note right of Accounts : Hold stays active.\nNo refund while Unknown.
                     Payments ->> Notifications : PaymentProcessing event
                     Payments --> Api : payment [Unknown]
                     Api --> CustomerApp : payment is being processed
@@ -131,4 +162,31 @@ else New key
         end
     end
 end
+
+== Unknown re-query (background, no customer request) ==
+note over Scheduler, Payments : Re-query times are cumulative from the moment the payment became Unknown.
+loop up to 3 times (after 1, 5 and 15 minutes)
+    Scheduler ->> Payments : requeueUnknown(paymentId)
+    Payments -> BillerIntegration : queryStatus(reference = paymentId)
+    BillerIntegration -> ElectroCoMock : GET payment(reference)
+    alt Biller confirms (paid)
+        ElectroCoMock --> BillerIntegration : paid
+        BillerIntegration --> Payments : confirmed
+        Payments -> Accounts : completeHold(holdId, feeIncome 2.50, agentCommission 1.00 if agent)
+        Accounts --> Payments : charged
+        Payments -> Payments : transition Unknown -> Completed
+        Payments ->> Notifications : PaymentCompleted event\n(SMS + push)
+        note over Scheduler, Payments : Stop re-querying.
+    else Biller refuses, or has no such payment
+        ElectroCoMock --> BillerIntegration : refused / not found
+        BillerIntegration --> Payments : refused
+        Payments -> Payments : transition Unknown -> Failed
+        ref over Payments, Accounts, Notifications : seq-refund-failed\n(release hold once, Failed -> Refunded, notify)
+        note over Scheduler, Payments : Stop re-querying.
+    else No answer
+        BillerIntegration --> Payments : timeout
+        note right of Payments : Stays Unknown. Hold stays active.\nNo refund.
+    end
+end
+note over Payments, Accounts : After the 3rd unanswered re-query the payment stays Unknown with the hold kept.\nThe reconciliation job (US-32) resolves it later with the same transitions:\nUnknown -> Completed, or Unknown -> Failed then seq-refund-failed.
 @enduml
