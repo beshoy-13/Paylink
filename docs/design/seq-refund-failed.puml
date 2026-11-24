@@ -1,0 +1,32 @@
+@startuml seq-refund-failed
+title PayLink - Refund a Failed Payment (release the hold)
+
+' DECISIONS
+' - Trigger: Payments starts this flow automatically whenever a payment enters Failed,
+'   from SentToBiller (biller refuses) or from Unknown (retry, callback or reconciliation).
+'   A customer-requested refund of a Completed payment (FR-27) is a different flow.
+' - This is the ONLY place where the hold is released (Failed -> Refunded, section 2.5).
+' - Accounts writes the ledger entries and the audit record in one transaction (FR-25).
+'   audit_log is owned by SharedKernel types, written by Accounts for money movements.
+' - Actor for the audit record of an automatic refund: "system".
+
+participant Payments
+participant "Accounts (Wallet)" as Accounts
+participant Notifications
+
+[-> Payments : paymentFailed(paymentId)
+Payments -> Payments : load payment
+alt Payment is not in state Failed (e.g. Unknown, Completed)
+    Payments -> Payments : refuse, no refund
+else Payment is in state Failed
+    Payments -> Accounts : releaseHold(holdId, paymentId, actor = system, reason = "failed payment")
+    note right of Accounts : ONE transaction:\n- compensating ledger entries\n  (held decreases, available increases by held amount)\n- audit record (who, when, why)
+    alt Hold already released (duplicate trigger)
+        Accounts --> Payments : alreadyReleased (no new entries)
+    else Hold active
+        Accounts --> Payments : holdReleased
+    end
+    Payments -> Payments : transition Failed -> Refunded
+    Payments ->> Notifications : PaymentRefunded event\n(SMS + push, with reason)
+end
+@enduml

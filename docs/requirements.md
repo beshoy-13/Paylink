@@ -5,7 +5,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-15 -> FR-15 | Priority: Must
+## US-15 -> FR-15
 
 **Story:** As a customer, I want to pay bills at ElectroCo, AquaCo and TopUpNet, so that I can pay all my utilities from one wallet even though each biller uses a different format.
 
@@ -20,7 +20,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-16 -> FR-16 | Priority: Must
+## US-16 -> FR-16
 
 **Story:** As a customer, I want fees calculated by clear rules, including promotions, so that I see exactly what I pay before confirming.
 
@@ -32,11 +32,11 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 - **Tiered:** Given an internet payment of 200.00 EGP / Then fee = 2.00 EGP; given 200.01 EGP / Then fee = 4.00 EGP.
 - **Promotion:** Given a promotion on one chosen biller with start and end dates / When a payment to that biller is made inside the dates / Then fee = 0.00 EGP; on the day after the end date the normal fee applies.
 - **Failure path (invalid configuration):** Given a fee rule with a negative value or an end date before its start date / When an admin saves it / Then it is rejected and the old rule stays active.
-- **Rounding:** Given any fee calculation / Then the result is `decimal`, rounded to 2 decimal places (rounding mode: see OPEN QUESTIONS).
+- **Rounding:** Given a mobile top-up of 33.33 EGP / When the fee is calculated / Then fee = 1.00 EGP (1.5% = 0.49995, minimum 1 EGP applies); given 100.10 EGP / Then fee = 1.50 EGP (1.5% = 1.5015, rounded half up to 2 decimals). All money is `decimal`.
 
 ---
 
-## US-17 -> FR-17 | Priority: Should
+## US-17 -> FR-17
 
 **Story:** As an agent, I want to pay a bill on behalf of a customer and earn commission, so that I am paid for serving customers at my terminal.
 
@@ -46,11 +46,11 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 - **No commission before completion:** Given the payment is in FundsHeld, SentToBiller or Unknown / Then the agent's wallet balance has not changed.
 - **Failure path (payment fails):** Given an agent payment that becomes Failed / Then no commission is credited and the hold is released.
 - **Failure path (unauthorized):** Given a user who is not an agent / When they submit a payment as an agent / Then the request is refused and no payment is created.
-- **Zero fee:** Given a promotion fee of 0.00 EGP / When the payment completes / Then the commission is 0.00 EGP (see OPEN QUESTIONS).
+- **Zero fee:** Given a promotion makes the fee 0.00 EGP / When an agent payment completes / Then the commission is 0.00 EGP (40% of 0) and no commission record is created.
 
 ---
 
-## US-18 -> FR-18 | Priority: Must
+## US-18 -> FR-18
 
 **Story:** As a customer, I want payments above my limits to be rejected with a clear reason, so that I understand why a payment did not go through.
 
@@ -59,13 +59,15 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 - **Single-payment limit (high):** Given a payment of 10,000.01 EGP / When submitted / Then the state is Rejected with reason "above single-payment maximum (10,000 EGP)".
 - **Single-payment limit (low):** Given a payment of 4.99 EGP / When submitted / Then Rejected with reason "below minimum (5 EGP)".
 - **Boundary accepted:** Given payments of exactly 5.00 EGP and exactly 10,000.00 EGP from a verified account with enough funds and daily room / Then neither is rejected for amount.
+- **Daily limit boundary:** Given a basic account that has paid 4,700.00 EGP today / When it submits exactly 300.00 EGP / Then it is accepted (total exactly 5,000.00 EGP); given 300.01 EGP / Then Rejected with reason "daily limit of 5,000 EGP exceeded".
+- **Which amount counts:** The 5 / 10,000 EGP limits apply to the bill amount, not the fee. The daily limit counts payments in Completed, FundsHeld, SentToBiller and Unknown, by bill amount, on a Cairo calendar day.
 - **Daily limit (basic):** Given a basic account that has already paid 4,800.00 EGP today / When it submits 300.00 EGP / Then Rejected with reason "daily limit of 5,000 EGP exceeded".
 - **Daily limit (verified):** Given a verified account with 29,800.00 EGP paid today / When it submits 300.00 EGP / Then Rejected with reason "daily limit of 30,000 EGP exceeded".
 - **No side effects:** Given any Rejected payment / Then no hold is created and wallet balances are unchanged.
 
 ---
 
-## US-19 -> FR-19 | Priority: Should
+## US-19 -> FR-19
 
 **Story:** As PayLink, I want an account blocked when it makes too many payments too quickly, so that fraud and runaway clients are stopped.
 
@@ -80,7 +82,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-20 -> FR-20 | Priority: Must
+## US-20 -> FR-20
 
 **Story:** As a support employee, I want to search a payment by its reference and see its full history, so that I can resolve customer complaints.
 
@@ -93,7 +95,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-21 -> FR-21 | Priority: Should
+## US-21 -> FR-21
 
 **Story:** As a support employee, I want to block and unblock an account, so that I can stop suspicious activity or restore a customer's access.
 
@@ -107,7 +109,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-22 -> FR-22 | Priority: Must
+## US-22 -> FR-22
 
 **Story:** As a customer, I want an SMS and a push message when my payment completes or fails, so that I know the result without opening the app.
 
@@ -121,7 +123,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-23 -> FR-23 | Priority: Should
+## US-23 -> FR-23
 
 **Story:** As PayLink, I want failed notifications retried and finally marked undelivered, so that messages are not lost silently.
 
@@ -134,7 +136,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-24 -> FR-24 | Priority: Should
+## US-24 -> FR-24
 
 **Story:** As an admin, I want to edit fee and limit values without redeploying, so that business changes take effect quickly.
 
@@ -149,7 +151,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-25 -> FR-25 | Priority: Must
+## US-25 -> FR-25
 
 **Story:** As an auditor or admin, I want every money movement and admin action written to an audit log, so that I can always see who did what, when and why.
 
@@ -163,22 +165,25 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-26 -> FR-26 | Priority: Should
+## US-26 -> FR-26
 
-**Story:** As a finance or support employee, I want a daily reconciliation report from the settlement file, so that differences between PayLink and the biller are found.
+**Story:** As a finance or support employee, I want a daily reconciliation report from the settlement file, so that differences between PayLink and the biller are found and reviewed.
 
 **Acceptance Criteria:**
 
-- **Match:** Given the settlement file lists a payment PayLink has as Completed with the same amount / Then it is marked matched.
-- **Hard case 7:** Given the settlement file lists a payment PayLink has as Failed / Then the report flags it as a difference for support review, and the state is not changed automatically.
-- **Missing at PayLink:** Given the settlement file lists a reference PayLink does not know / Then it is flagged.
-- **Unknown resolution:** Given a payment in Unknown that is absent from the settlement file / Then it is flagged (it may then move to Failed per section 2.5).
-- **Failure path (bad file):** Given a settlement file that cannot be parsed / Then no report is produced from it and the error is logged.
-- **Failure path (repeat):** Given the same file is uploaded twice / Then no duplicate report entries are created.
+- **Match:** Given the settlement file lists reference R1 with 350.00 EGP and PayLink has R1 as Completed with 350.00 EGP / When reconciliation runs / Then R1 is marked matched.
+- **Hard case 7:** Given the settlement file lists R2 and PayLink has R2 as Failed / When reconciliation runs / Then the report flags R2 as a difference for support review, and the payment state is not changed automatically.
+- **Unknown, listed in file:** Given PayLink has R3 as Unknown and the file lists R3 / When reconciliation runs / Then R3 becomes Completed (Unknown -> Completed), the hold becomes the final charge, and the customer is notified.
+- **Unknown, absent from file:** Given PayLink has R4 as Unknown and the file does not list R4 / When reconciliation runs / Then R4 becomes Failed (Unknown -> Failed), then the hold is released (Failed -> Refunded), and the report records the change.
+- **Completed, absent from file:** Given PayLink has R5 as Completed and the file does not list R5 / When reconciliation runs / Then R5 is flagged as a difference and its state is not changed.
+- **Amount mismatch:** Given PayLink has R6 as Completed with 350.00 EGP and the file lists R6 with 305.00 EGP / When reconciliation runs / Then R6 is flagged with both amounts.
+- **Unknown reference:** Given the file lists a reference PayLink does not have / When reconciliation runs / Then it is flagged as "unknown to PayLink".
+- **Failure path (bad file):** Given a settlement file that cannot be parsed / When reconciliation runs / Then no report is produced from it, no payment changes state, and the error is logged.
+- **Failure path (repeat):** Given the same settlement file is processed twice / When the second run happens / Then no duplicate report entries are created and no payment changes state again
 
 ---
 
-## US-27 -> FR-27 | Priority: Could
+## US-27 -> FR-27
 
 **Story:** As a customer, I want to request a refund of a completed payment, and support approves it, so that I can get my money back for a legitimate problem.
 
@@ -193,7 +198,7 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## US-28 -> FR-28 | Priority: Could
+## US-28 -> FR-28
 
 **Story:** As an admin, I want to view daily totals, so that I can monitor PayLink's business and biller health.
 
@@ -207,41 +212,22 @@ Payment states used: Initiated, FundsHeld, Rejected, SentToBiller, Completed, Fa
 
 ---
 
-## FR to story map
+## Ambiguities and decisions (Member D's items; merge into A's table)
 
-| FR    | Story | Priority |
-| ----- | ----- | -------- |
-| FR-15 | US-15 | Must     |
-| FR-16 | US-16 | Must     |
-| FR-17 | US-17 | Should   |
-| FR-18 | US-18 | Must     |
-| FR-19 | US-19 | Should   |
-| FR-20 | US-20 | Must     |
-| FR-21 | US-21 | Should   |
-| FR-22 | US-22 | Must     |
-| FR-23 | US-23 | Should   |
-| FR-24 | US-24 | Should   |
-| FR-25 | US-25 | Must     |
-| FR-26 | US-26 | Should   |
-| FR-27 | US-27 | Could    |
-| FR-28 | US-28 | Could    |
-
----
-
-## OPEN QUESTIONS (not decided: needs team decision, add to ambiguities list)
-
-1. **Promotion and commission:** If the fee is 0, is the agent commission 0 (40% of 0)? Stories assume 0.00 EGP.
-2. **Refund vs final state:** Completed is final, yet FR-27 allows refunds. Stories assume a separate refund request with new ledger entries, leaving the payment state Completed. The Refunded state is only reached from Failed. Confirm.
-3. **Daily limit counting:** Does it count Completed only, or also FundsHeld, SentToBiller and Unknown? Does it include the fee? Is a day a Cairo calendar day or a rolling 24 hours?
-4. **Single-payment limits (5 / 10,000 EGP):** Do they apply to the bill amount or to bill + fee? Stories assume the bill amount.
-5. **Velocity rule:** Do Rejected attempts count toward the 5 in 60 seconds? Does the 6th payment count as the trigger and get rejected, or is only the next one blocked?
-6. **Notification retry timing:** The brief gives 3 retries but no interval. Interval left unspecified.
-7. **Rounding mode** for percentage fees (e.g. 1.5% of 33.33 EGP) is not specified.
-8. **Overpayment at AquaCo:** The brief says AquaCo rejects payments above the bill amount. Can a customer pay a partial amount?
-9. **Settlement-file format** (columns, matching key) is not given for reconciliation.
-10. **Roles and authentication:** The brief does not say how admin, support and agent roles are authenticated; stories only assume "unauthorized access is refused".
-11. **Audit log "why":** What counts as a reason for automatic system actions (e.g. retries)?
-12. **Fee on in-flight payments** when an admin changes a fee: assumed unchanged (US-24); confirm.
+| #   | Question                                                       | Why unclear                                       | Decision                                                                                                                     | Decided by |
+| --- | -------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| D1  | Commission when the fee is 0 (promotion)                       | 40% of 0 is 0, but a record may still be expected | Commission = 0.00 EGP, no commission record                                                                                  | Team       |
+| D2  | Refund of a Completed payment (FR-27) vs Completed being final | Section 2.5 makes Completed final                 | Separate refund request that creates new ledger entries; payment state stays Completed. Refunded is only reached from Failed | Team       |
+| D3  | What counts toward the daily limit                             | Brief does not say                                | Completed, FundsHeld, SentToBiller and Unknown, by bill amount (no fee), on a Cairo calendar day                             | Team       |
+| D4  | Do the 5 / 10,000 EGP limits include the fee                   | Brief says "single payment"                       | Apply to the bill amount only                                                                                                | Team       |
+| D5  | Velocity rule counting                                         | Brief says "more than 5 in 60 seconds"            | Rejected attempts count; the 6th payment is rejected and the account is blocked for 10 minutes                               | Team       |
+| D6  | Notification retry interval                                    | Brief gives 3 retries, no interval                | Configurable (default 1 minute); tests use a fake clock                                                                      | Team       |
+| D7  | Rounding of percentage fees                                    | Not specified                                     | Round half up to 2 decimals (`MidpointRounding.AwayFromZero`), min fee applied after rounding                                | Team       |
+| D8  | Partial payment at AquaCo                                      | Brief says it rejects above the bill amount       | Partial payments not supported; amount must equal the bill                                                                   | Team       |
+| D9  | Settlement file format                                         | Not given                                         | CSV: reference, amount, status, date; match key = payment reference                                                          | Team       |
+| D10 | Who authenticates admin, support, agent roles                  | Not specified                                     | Role claim on the token; unauthorized requests refused (403)                                                                 | Team       |
+| D11 | "Why" in audit for automatic actions                           | Not specified                                     | Reason code plus actor "system" (for example "biller timeout retry", "failed payment refund")                                | Team       |
+| D12 | Fee on in-flight payments when an admin changes a fee          | Not specified                                     | The fee quoted at inquiry is kept                                                                                            | Team       |
 
 ## Non-functional requirements
 
