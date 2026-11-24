@@ -1,31 +1,13 @@
-# PayLink Project — AI Prompt Log
-
-This document tracks all AI interactions across the PayLink project lifecycle, as required by the project specification and course guidelines.
+# Prompt log
 
 ## Logging Guidelines for Team Members
 
 - **When to Log:** Every team member must record AI interactions when an AI tool generates more than half of a change, or when an AI suggestion is analyzed, rejected, or modified.
-- **Commit Requirement:** When committing AI-assisted work, cite the tool name in the commit message (e.g., `AI-assisted: Claude 3.5 Sonnet` or `AI-assisted: ChatGPT-4o`).
-- **Transparency:** Honest logging of rejected or corrected answers is required and earns marks when properly documented and analyzed.
 
----
-
-## Prompt Log Table
-
-| Date       | Author   | Stage            | Tool & Model      | Prompt                                                                                                                                                                                                                                                               | Summary of Answer                                                                                                                                               | Verdict & Why                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------- | -------- | ---------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-23 | Member D | Phase 1 (Design) | Claude 3.5 Sonnet | "Generate PlantUML state diagram code (`state-payment.puml`) for the PayLink payment lifecycle. State transitions: Initiated, FundsHeld, SentToBiller, Completed, Failed, Unknown, Rejected, Refunded. Include transitions for timeouts and failed payment refunds." | Provided a PlantUML state diagram containing 8 states, but included a direct transition from `Unknown` to `Refunded`, and marked `Unknown` as a terminal state. | **REJECTED & FIXED**<br>The AI violated Section 2.5 of the project brief: `Unknown` cannot transition directly to `Refunded` (it must resolve to `Completed` or `Failed` first, and only `Failed` can transition to `Refunded`). The prompt was refined to explicitly enforce strict state transition rules and list exact terminal states (`Completed`, `Rejected`, `Refunded`). |
-
----
-
-## Instructions for Appending Entries
-
-Add new rows to the bottom of the table using the following column order:
-
-1. **Date** (`YYYY-MM-DD`)
-2. **Author** (Member A, B, C, or D)
-3. **Stage** (e.g., `Phase 1 - Requirements`, `Phase 1 - DevOps`, `Phase 2 - Accounts`, etc.)
-4. **Tool & Model** (e.g., `ChatGPT-4o`, `Claude 3.5 Sonnet`, `GitHub Copilot`)
-5. **Prompt** (The exact prompt or structured prompt template used)
-6. **Summary of Answer** (Brief summary of what the AI returned)
-7. **Verdict & Why** (`ACCEPTED`, `FIXED`, or `REJECTED`, with a concrete technical explanation)
+| Date       | Author     | Stage  | Tool and model    | Prompt                                                                            | Summary of answer                                       | Verdict and why                                                                                                       |
+| ---------- | ---------- | ------ | ----------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Fix the NU1903 vulnerability warning for Microsoft.OpenApi in the Web API project | Add the Microsoft.OpenApi package with no version       | Rejected: it installed 3.11.1, the template's generator needs 2.x, and the build failed with CS0200                   |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Update the package that pulls in Microsoft.OpenApi                                | Add Microsoft.AspNetCore.OpenApi with no version        | Rejected: it installed the .NET 11 build, the compiler could not use the analyzer (CS9057) and AddOpenApi disappeared |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Same fix, pinned to the .NET 10 line                                              | Add Microsoft.AspNetCore.OpenApi with --version 10.0.\* | Accepted: 10.0.15 resolved Microsoft.OpenApi 2.13.0, the warning disappeared and the build passes                     |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Write the GitHub Actions workflow for build, format check, test and Docker build  | Used actions/checkout v4 and actions/setup-dotnet v4    | Fixed: the release pages show checkout v7.0.1 and setup-dotnet v6.1.0, and the AI could not verify versions by search |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Branch protection on a private repo with GitHub Free                              | Suggested making the repo public as a fallback          | Fixed: the brief requires a private repo, so the TA must be told and the repo switched back after the Student Pack    |
