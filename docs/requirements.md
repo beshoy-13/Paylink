@@ -430,7 +430,6 @@ The questions and the answers given.
 | 2 | What does "verification before they can enter" mean at registration (OTP, email link)? | FR-1 | Verification is done by email. |
 | 3 | Do the single-payment limits (5 and 10,000 EGP) change for Verified customers? The requirement says Verified "raises limits" but only gives daily numbers. | FR-2 | Only the daily limit is changed. |
 | 4 | Is a payment that breaks a limit moved to Rejected, or refused before a payment is created? The life cycle allows Rejected only for fraud or insufficient funds. | FR-9, FR-11 | It is refused before the payment is created and not written in the log. |
-|
 | 5 | Does the daily limit count only Completed payments, or also FundsHeld, SentToBiller and Unknown ones? Is a day a Cairo calendar day or a rolling 24 hours? | FR-2, FR-9 | It counts all of them (FundsHeld, SentToBiller, Unknown and Completed). The day is a Cairo calendar day, resetting at midnight Cairo time. |
 | 6 | How is the fee calculated, and is total always amount plus fee? | FR-8 | The fee is decided by the admin per biller, total equals amount + fee. |
 | 7 | Do the limit checks (single payment 5 / 10,000 EGP and the daily limit) apply to the bill amount or to bill + fee? | FR-9 | The total (bill + fee), for both the single-payment limits and the daily limit. |
