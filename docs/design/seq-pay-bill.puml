@@ -4,11 +4,13 @@ autonumber
 
 ' DECISIONS (see requirements.md, Ambiguities and decisions)
 ' - Api is wiring only: it authenticates and forwards. Payments orchestrates inquiry, fee and payment.
-' - Idempotency key is checked by Payments (FR-10, hard case 1).
-' - Min/max amount, daily limit, velocity and blocked-account checks are rules in the Fraud chain.
-' - Accounts writes each ledger entry and its audit record in the same DB transaction (FR-25).
+' - Idempotency key is checked by Payments first (FR-10, hard case 1): no new charge or hold.
+' - Min/max amount (5 / 10,000 EGP, bill amount only) is validated by Payments BEFORE the payment
+'   is created: error with a reason, no payment, no hold.
+' - Daily limit, velocity and blocked account are rules in the Fraud chain and give Rejected.
+' - Accounts writes each ledger entry and its audit record in ONE DB transaction (FR-25).
 ' - Notifications are asynchronous (in-process event): a failure never changes the payment (hard case 5).
-' - Failed -> Refunded (hold release) is defined once, in seq-refund-failed.
+' - Failed -> Refunded (hold released once) is defined only in seq-refund-failed.
 
 participant CustomerApp
 participant Api
@@ -51,65 +53,80 @@ CustomerApp -> Api : pay(billId, idempotencyKey)
 Api -> Payments : pay(customerId, billId, idempotencyKey)
 Payments -> Payments : look up idempotencyKey
 alt Key already used (hard case 1)
-    Payments --> Api : original payment result (no new charge)
+    Payments --> Api : original payment result (no new charge, no new hold)
     Api --> CustomerApp : original result
 else New key
-    Payments -> Payments : create payment [Initiated]\nstore idempotencyKey (unique)
+    note over Payments, Catalog : Min/max validation (bill amount only), before the payment exists
+    Payments -> Catalog : getLimits(billerServiceId)
+    Catalog --> Payments : min 5.00 / max 10,000.00 EGP
+    alt Bill amount below 5.00 or above 10,000.00
+        Payments --> Api : error(reason: below minimum / above maximum), no payment created
+        Api --> CustomerApp : error(reason)
+    else Amount within limits
+        Payments -> Payments : create payment [Initiated]\nstore idempotencyKey (unique)
 
-    note over Payments, Fraud : Step 4: Fraud checks (chain of rules)
-    Payments -> Fraud : check(customerId, amount 350.00, level)
-    alt A rule fails (limit, velocity, blocked, min/max)
-        Fraud --> Payments : rejected(reason)
-        Payments -> Payments : transition Initiated -> Rejected
-        Payments --> Api : payment [Rejected] + reason
-        Api --> CustomerApp : rejected(reason)
-    else All rules pass
-        Fraud --> Payments : passed
-
-        note over Payments, Accounts : Step 5: Hold the money
-        Payments -> Accounts : placeHold(walletId, 352.50 EGP, paymentId)
-        note right of Accounts : Ledger entries + audit records\nwritten in ONE transaction
-        alt Insufficient funds (hard case 4)
-            Accounts --> Payments : insufficientFunds
+        note over Payments, Fraud : Step 4: Fraud checks (chain: daily limit, velocity, blocked account)
+        Payments -> Fraud : check(customerId, amount 350.00, level)
+        alt Velocity rule fails (more than 5 payments in 60 s)
+            Fraud -> Accounts : blockAccount(customerId, 10 minutes, reason = "velocity")
+            Accounts --> Fraud : blocked (ledger-free change + audit record)
+            Fraud --> Payments : rejected(reason)
             Payments -> Payments : transition Initiated -> Rejected
             Payments --> Api : payment [Rejected] + reason
-            Api --> CustomerApp : rejected(insufficient funds)
-        else Funds available
-            Accounts --> Payments : holdPlaced(holdId)
-            Payments -> Payments : transition Initiated -> FundsHeld
+            Api --> CustomerApp : rejected(reason)
+        else Daily limit exceeded or account blocked
+            Fraud --> Payments : rejected(reason)
+            Payments -> Payments : transition Initiated -> Rejected
+            Payments --> Api : payment [Rejected] + reason
+            Api --> CustomerApp : rejected(reason)
+        else All rules pass
+            Fraud --> Payments : passed
 
-            note over Payments, ElectroCoMock : Step 6: Call the biller
-            Payments -> Payments : transition FundsHeld -> SentToBiller
-            Payments -> BillerIntegration : pay(reference = paymentId, 350.00 EGP)
-            BillerIntegration -> ElectroCoMock : POST payment(reference, 350.00)
+            note over Payments, Accounts : Step 5: Hold the money
+            Payments -> Accounts : placeHold(walletId, 352.50 EGP, paymentId)
+            note right of Accounts : Ledger entries + audit records\nwritten in ONE transaction
+            alt Insufficient funds (hard case 4)
+                Accounts --> Payments : insufficientFunds
+                Payments -> Payments : transition Initiated -> Rejected
+                Payments --> Api : payment [Rejected] + reason
+                Api --> CustomerApp : rejected(insufficient funds)
+            else Funds available
+                Accounts --> Payments : holdPlaced(holdId)
+                Payments -> Payments : transition Initiated -> FundsHeld
 
-            note over Payments, ElectroCoMock : Step 7: Confirmation
-            alt Biller confirms (paid)
-                ElectroCoMock --> BillerIntegration : paid
-                BillerIntegration --> Payments : confirmed
-                Payments -> Accounts : completeHold(holdId, feeIncome 2.50, commission?)
-                note right of Accounts : ONE transaction: hold -> final charge,\nfee income, agent commission (if agent),\nledger entries + audit records
-                Accounts --> Payments : charged
-                Payments -> Payments : transition SentToBiller -> Completed
+                note over Payments, ElectroCoMock : Step 6: Call the biller
+                Payments -> Payments : transition FundsHeld -> SentToBiller
+                Payments -> BillerIntegration : pay(reference = paymentId, 350.00 EGP)
+                BillerIntegration -> ElectroCoMock : POST payment(reference, 350.00)
 
-                note over Payments, Notifications : Step 8: Receipt (asynchronous)
-                Payments ->> Notifications : PaymentCompleted event\n(SMS + push)
-                Payments --> Api : payment [Completed]
-                Api --> CustomerApp : receipt
-            else Biller refuses (error code)
-                ElectroCoMock --> BillerIntegration : refused(errorCode)
-                BillerIntegration --> Payments : refused(errorCode)
-                Payments -> Payments : transition SentToBiller -> Failed
-                ref over Payments, Accounts, Notifications : seq-refund-failed\n(release hold, Failed -> Refunded, notify)
-                Payments --> Api : payment [Refunded] + reason
-                Api --> CustomerApp : failed(reason), money returned
-            else No answer within 10 seconds (hard case 2)
-                BillerIntegration --> Payments : timeout
-                Payments -> Payments : transition SentToBiller -> Unknown
-                note right of Accounts : Hold stays active.\nNo refund while Unknown.\nRe-query after 1, 5, 15 min.
-                Payments ->> Notifications : PaymentProcessing event
-                Payments --> Api : payment [Unknown]
-                Api --> CustomerApp : payment is being processed
+                note over Payments, ElectroCoMock : Step 7: Confirmation
+                alt Biller confirms (paid)
+                    ElectroCoMock --> BillerIntegration : paid
+                    BillerIntegration --> Payments : confirmed
+                    Payments -> Accounts : completeHold(holdId, feeIncome 2.50, agentCommission 1.00 if agent)
+                    note right of Accounts : ONE transaction: hold -> final charge,\nfee income, agent commission (40% of fee,\nPayLink keeps 1.50), ledger entries + audit records
+                    Accounts --> Payments : charged
+                    Payments -> Payments : transition SentToBiller -> Completed
+
+                    note over Payments, Notifications : Step 8: Receipt (asynchronous)
+                    Payments ->> Notifications : PaymentCompleted event\n(SMS + push)
+                    Payments --> Api : payment [Completed]
+                    Api --> CustomerApp : receipt
+                else Biller refuses (error code)
+                    ElectroCoMock --> BillerIntegration : refused(errorCode)
+                    BillerIntegration --> Payments : refused(errorCode)
+                    Payments -> Payments : transition SentToBiller -> Failed
+                    ref over Payments, Accounts, Notifications : seq-refund-failed\n(release hold once, Failed -> Refunded, notify)
+                    Payments --> Api : payment [Refunded] + reason
+                    Api --> CustomerApp : failed(reason), money returned
+                else No answer within 10 seconds (hard case 2)
+                    BillerIntegration --> Payments : timeout
+                    Payments -> Payments : transition SentToBiller -> Unknown
+                    note right of Accounts : Hold stays active.\nNo refund while Unknown.\nRe-query after 1, 5, 15 min.
+                    Payments ->> Notifications : PaymentProcessing event
+                    Payments --> Api : payment [Unknown]
+                    Api --> CustomerApp : payment is being processed
+                end
             end
         end
     end
