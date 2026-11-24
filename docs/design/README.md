@@ -6,17 +6,17 @@ This document records the confirmed architecture and technology decisions for th
 
 ## Technology Stack
 
-| Technology | Purpose |
-| --- | --- |
-| C# | Primary implementation language for the application and its modules. |
-| .NET 10 | Runtime and application framework for the backend implementation. |
-| ASP.NET Core Web API | Provides the HTTP API used by clients to access PayLink capabilities. |
-| Entity Framework Core | Provides relational data access and persistence mapping for application modules. |
-| PostgreSQL | Stores application data in a relational database. |
-| xUnit | Provides the automated testing framework for unit and integration testing. |
-| OpenAPI/Swagger | Documents and describes the HTTP API exposed by the application. |
+| Technology                | Purpose                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| C#                        | Primary implementation language for the application and its modules.              |
+| .NET 10                   | Runtime and application framework for the backend implementation.                 |
+| ASP.NET Core Web API      | Provides the HTTP API used by clients to access PayLink capabilities.             |
+| Entity Framework Core     | Provides relational data access and persistence mapping for application modules.  |
+| PostgreSQL                | Stores application data in a relational database.                                 |
+| xUnit                     | Provides the automated testing framework for unit and integration testing.        |
+| OpenAPI/Swagger           | Documents and describes the HTTP API exposed by the application.                  |
 | Docker and Docker Compose | Package the application and support consistent local execution and service setup. |
-| GitHub Actions | Automates repository workflows such as build and test execution. |
+| GitHub Actions            | Automates repository workflows such as build and test execution.                  |
 
 ## Architectural Approach
 
@@ -43,16 +43,16 @@ The system is divided into the following eight modules:
 
 The following ownership boundaries define the intended initial design. They describe architectural responsibility and do not mean that every listed data concept has already been implemented.
 
-| Module | Initial Data Ownership | Intermediate Details |
-| :--- | :--- | :--- |
-| **Accounts & Wallet** | Accounts, wallets, ledger entries, and holds. | Handles user/agent profiles, verification tiers, and account blocks. Computes wallet balances dynamically from immutable ledger entries rather than storing raw balance fields, and manages fund holds, top-ups, and refunds. |
-| **Biller Catalog** | Billers and available bill-payment services. | Maintains available billers and services, including required input fields, allowed payment ranges, and active/inactive flags, with admin management support. |
-| **Payment Processing** | Payments and payment lifecycle records. | Coordinates the payment workflow, enforces allowed state transitions, handles idempotency for duplicate requests, and supports payment lookup and refund flows. |
-| **Biller Integration** | Biller integration configurations and technical integration records. | Isolates protocol differences across billers (REST, SOAP, async callbacks, batch files) behind adapters, manages timeouts and retry schedules, and absorbs biller API changes without affecting core logic. |
-| **Fees & Commissions** | Fee rules and commission records. | Calculates service fees across different pricing models and active promotions, and tracks agent commissions earned on completed payments. |
-| **Fraud Checks** | Fraud rules and assessment records. | Runs pre-payment risk checks—such as spending limits, rapid-fire transaction rates, and blocked accounts—and logs the evaluation results. |
-| **Notifications** | Notification records and delivery status. | Sends customer alerts (SMS, push, email) via templates on payment outcomes, retries failed deliveries, and tracks delivery status independently of payment success. |
-| **Reconciliation** | Reconciliation records and results. | Matches internal payment records against biller settlement files, helps resolve uncertain states where rules permit, and logs discrepancies for support review. |
+| Module                 | Initial Data Ownership                                               | Intermediate Details                                                                                                                                                                                                          |
+| :--------------------- | :------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Accounts & Wallet**  | Accounts, wallets, ledger entries, and holds.                        | Handles user/agent profiles, verification tiers, and account blocks. Computes wallet balances dynamically from immutable ledger entries rather than storing raw balance fields, and manages fund holds, top-ups, and refunds. |
+| **Biller Catalog**     | Billers and available bill-payment services.                         | Maintains available billers and services, including required input fields, allowed payment ranges, and active/inactive flags, with admin management support.                                                                  |
+| **Payment Processing** | Payments and payment lifecycle records.                              | Coordinates the payment workflow, enforces allowed state transitions, handles idempotency for duplicate requests, and supports payment lookup and refund flows.                                                               |
+| **Biller Integration** | Biller integration configurations and technical integration records. | Isolates protocol differences across billers (REST, SOAP, async callbacks, batch files) behind adapters, manages timeouts and retry schedules, and absorbs biller API changes without affecting core logic.                   |
+| **Fees & Commissions** | Fee rules and commission records.                                    | Calculates service fees across different pricing models and active promotions, and tracks agent commissions earned on completed payments.                                                                                     |
+| **Fraud Checks**       | Fraud rules and assessment records.                                  | Runs pre-payment risk checks—such as spending limits, rapid-fire transaction rates, and blocked accounts—and logs the evaluation results.                                                                                     |
+| **Notifications**      | Notification records and delivery status.                            | Sends customer alerts (SMS, push, email) via templates on payment outcomes, retries failed deliveries, and tracks delivery status independently of payment success.                                                           |
+| **Reconciliation**     | Reconciliation records and results.                                  | Matches internal payment records against biller settlement files, helps resolve uncertain states where rules permit, and logs discrepancies for support review.                                                               |
 
 ## Core Architectural Rules
 
@@ -68,7 +68,7 @@ The following ownership boundaries define the intended initial design. They desc
 The following documents and diagrams are maintained in this directory:
 
 - `README.md` - Describes the confirmed technology stack, architectural approach, modules, and core rules.
-- `use-case-diagram.puml` - Records user and external-system interactions with PayLink using PlantUML's native use-case notation and explicit `<<include>>` and `<<extend>>` relationships.
+- `use-case-diagram.puml` - Records user and external-system interactions with PayLink using PlantUML's native use-case notation .
 - `domain-class-diagram.puml` - Reserved PlantUML file for the major domain concepts and relationships within and across modules.
 - `er-diagram.puml` - Reserved PlantUML file for persistent entities and their relationships.
 - `architecture-diagram.puml` - Reserved PlantUML file for the modular monolith structure, module boundaries, dependencies, and external infrastructure.

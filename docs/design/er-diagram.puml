@@ -1,0 +1,391 @@
+@startuml PayLink Entity Relationship Diagram
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "Accounts & Wallet" {
+    entity Account {
+        * Id : UUID <<PK>>
+        --
+        FullName : VARCHAR(200)
+        Email : VARCHAR(320) <<UK>>
+        PhoneNumber : VARCHAR(32) <<UK>>
+        PasswordHash : TEXT
+        Role : VARCHAR(32)
+        VerificationLevel : VARCHAR(32)
+        Status : VARCHAR(32)
+        CreatedAt : TIMESTAMPTZ
+    }
+
+    entity Wallet {
+        * Id : UUID <<PK>>
+        --
+        * AccountId : UUID <<FK, UK>>
+        PostedBalance : NUMERIC(18,2)
+        HeldBalance : NUMERIC(18,2)
+    }
+
+    entity LedgerEntry {
+        * Id : UUID <<PK>>
+        --
+        * WalletId : UUID <<FK>>
+        TopUpId : UUID <<FK, UK, nullable>>
+        PaymentId : UUID <<FK, UK, nullable>>
+        RefundRequestId : UUID <<FK, UK, nullable>>
+        Amount : NUMERIC(18,2)
+        EntryType : VARCHAR(32)
+        Description : TEXT
+        CreatedAt : TIMESTAMPTZ
+    }
+
+    entity FundHold {
+        * Id : UUID <<PK>>
+        --
+        * WalletId : UUID <<FK>>
+        * PaymentId : UUID <<FK, UK>>
+        Amount : NUMERIC(18,2)
+        Status : VARCHAR(32)
+        CreatedAt : TIMESTAMPTZ
+        ReleasedAt : TIMESTAMPTZ <<nullable>>
+    }
+
+    entity TopUp {
+        * Id : UUID <<PK>>
+        --
+        * WalletId : UUID <<FK>>
+        * InitiatedByAccountId : UUID <<FK>>
+        Amount : NUMERIC(18,2)
+        Method : VARCHAR(32)
+        Status : VARCHAR(32)
+        ExternalReference : VARCHAR(255) <<nullable>>
+        CreatedAt : TIMESTAMPTZ
+        CompletedAt : TIMESTAMPTZ <<nullable>>
+    }
+}
+
+package "Biller Catalog" {
+    entity Biller {
+        * Id : UUID <<PK>>
+        --
+        Name : VARCHAR(200)
+        Code : VARCHAR(64) <<UK>>
+        Status : VARCHAR(32)
+    }
+
+    entity BillerService {
+        * Id : UUID <<PK>>
+        --
+        * BillerId : UUID <<FK>>
+        Name : VARCHAR(200)
+        Code : VARCHAR(64)
+        MinimumAmount : NUMERIC(18,2)
+        MaximumAmount : NUMERIC(18,2)
+        Status : VARCHAR(32)
+    }
+
+    entity RequiredField {
+        * Id : UUID <<PK>>
+        --
+        * BillerServiceId : UUID <<FK>>
+        Name : VARCHAR(128)
+        DataType : VARCHAR(32)
+        IsRequired : BOOLEAN
+        ValidationRules : JSONB
+    }
+}
+
+package "Payment Processing" {
+    entity Payment {
+        * Id : UUID <<PK>>
+        --
+        * AccountId : UUID <<FK>>
+        AgentAccountId : UUID <<FK, nullable>>
+        * BillerServiceId : UUID <<FK>>
+        Amount : NUMERIC(18,2)
+        FeeAmount : NUMERIC(18,2)
+        TotalAmount : NUMERIC(18,2)
+        Status : VARCHAR(32)
+        IdempotencyKey : VARCHAR(255)
+        BillerReference : VARCHAR(255) <<nullable>>
+        CreatedAt : TIMESTAMPTZ
+        CompletedAt : TIMESTAMPTZ <<nullable>>
+    }
+
+    entity PaymentStatusHistory {
+        * Id : UUID <<PK>>
+        --
+        * PaymentId : UUID <<FK>>
+        PreviousStatus : VARCHAR(32) <<nullable>>
+        NewStatus : VARCHAR(32)
+        ChangedAt : TIMESTAMPTZ
+        Reason : TEXT <<nullable>>
+    }
+
+    entity RefundRequest {
+        * Id : UUID <<PK>>
+        --
+        * PaymentId : UUID <<FK>>
+        * RequestedBy : UUID <<FK>>
+        Reason : TEXT
+        Status : VARCHAR(32)
+        ApprovedBy : UUID <<FK, nullable>>
+        CreatedAt : TIMESTAMPTZ
+        ApprovedAt : TIMESTAMPTZ <<nullable>>
+    }
+}
+
+package "Biller Integration" {
+    entity BillerIntegration {
+        * Id : UUID <<PK>>
+        --
+        * BillerId : UUID <<FK, UK>>
+        Protocol : VARCHAR(32)
+        Endpoint : TEXT
+        Configuration : JSONB
+        TimeoutSeconds : INTEGER
+        RetryPolicy : JSONB
+        Status : VARCHAR(32)
+    }
+
+    entity BillerCallback {
+        * Id : UUID <<PK>>
+        --
+        * BillerIntegrationId : UUID <<FK>>
+        * PaymentId : UUID <<FK>>
+        ExternalEventId : VARCHAR(255)
+        ReceivedAt : TIMESTAMPTZ
+        ProcessingStatus : VARCHAR(32)
+        ProcessedAt : TIMESTAMPTZ <<nullable>>
+    }
+}
+
+package "Fees & Commissions" {
+    entity FeeRule {
+        * Id : UUID <<PK>>
+        --
+        * BillerServiceId : UUID <<FK>>
+        FeeType : VARCHAR(32)
+        FeeValue : NUMERIC(18,2)
+        MinimumFee : NUMERIC(18,2) <<nullable>>
+        MaximumFee : NUMERIC(18,2) <<nullable>>
+        IsActive : BOOLEAN
+    }
+
+    entity Promotion {
+        * Id : UUID <<PK>>
+        --
+        * BillerServiceId : UUID <<FK>>
+        Name : VARCHAR(200)
+        DiscountType : VARCHAR(32)
+        DiscountValue : NUMERIC(18,2)
+        StartDate : TIMESTAMPTZ
+        EndDate : TIMESTAMPTZ
+        IsActive : BOOLEAN
+    }
+
+    entity Commission {
+        * Id : UUID <<PK>>
+        --
+        * PaymentId : UUID <<FK, UK>>
+        * AgentAccountId : UUID <<FK>>
+        Amount : NUMERIC(18,2)
+        Status : VARCHAR(32)
+        CreatedAt : TIMESTAMPTZ
+    }
+}
+
+package "Fraud Checks" {
+    entity FraudRule {
+        * Id : UUID <<PK>>
+        --
+        Name : VARCHAR(200)
+        RuleType : VARCHAR(32)
+        Configuration : JSONB
+        IsActive : BOOLEAN
+    }
+
+    entity FraudAssessment {
+        * Id : UUID <<PK>>
+        --
+        * AccountId : UUID <<FK>>
+        * FraudRuleId : UUID <<FK>>
+        PaymentId : UUID <<FK, nullable>>
+        Result : VARCHAR(32)
+        Reason : TEXT
+        AssessedAt : TIMESTAMPTZ
+    }
+}
+
+package "Notifications" {
+    entity Notification {
+        * Id : UUID <<PK>>
+        --
+        * AccountId : UUID <<FK>>
+        PaymentId : UUID <<FK, nullable>>
+        Channel : VARCHAR(32)
+        Recipient : VARCHAR(320)
+        Template : VARCHAR(128)
+        Status : VARCHAR(32)
+        RetryCount : INTEGER
+        CreatedAt : TIMESTAMPTZ
+        SentAt : TIMESTAMPTZ <<nullable>>
+    }
+}
+
+package "Reconciliation" {
+    entity ReconciliationRun {
+        * Id : UUID <<PK>>
+        --
+        * BillerId : UUID <<FK>>
+        StartedAt : TIMESTAMPTZ
+        CompletedAt : TIMESTAMPTZ <<nullable>>
+        Status : VARCHAR(32)
+        ReportReference : VARCHAR(255) <<nullable>>
+    }
+
+    entity ReconciliationItem {
+        * Id : UUID <<PK>>
+        --
+        * ReconciliationRunId : UUID <<FK>>
+        PaymentId : UUID <<FK, nullable>>
+        ExternalReference : VARCHAR(255)
+        InternalAmount : NUMERIC(18,2) <<nullable>>
+        ExternalAmount : NUMERIC(18,2)
+        MatchStatus : VARCHAR(32)
+        Difference : NUMERIC(18,2)
+    }
+}
+
+package "Auditing" {
+    entity AuditEvent {
+        * Id : UUID <<PK>>
+        --
+        * ActorAccountId : UUID <<FK>>
+        EventType : VARCHAR(64)
+        EntityType : VARCHAR(128)
+        EntityId : UUID
+        Details : JSONB
+        CreatedAt : TIMESTAMPTZ
+    }
+}
+
+Account ||--|| Wallet : owns
+Wallet ||--o{ LedgerEntry : contains
+Wallet ||--o{ FundHold : maintains
+Wallet ||--o{ TopUp : receives
+Account ||--o{ TopUp : initiates
+
+TopUp ||--o| LedgerEntry : generates
+Payment ||--o| LedgerEntry : generates
+RefundRequest ||--o| LedgerEntry : generates
+
+Payment ||--o| FundHold : reserves
+Account ||--o{ Payment : makes
+Account |o--o{ Payment : agent account
+BillerService ||--o{ Payment : targeted by
+Payment ||--o{ PaymentStatusHistory : records
+Payment ||--o{ RefundRequest : may have
+Account ||--o{ RefundRequest : requests
+Account |o--o{ RefundRequest : approves
+
+Biller ||--o{ BillerService : offers
+BillerService ||--o{ RequiredField : defines
+Biller ||--|| BillerIntegration : configures
+BillerIntegration ||--o{ BillerCallback : receives
+Payment ||--o{ BillerCallback : receives
+
+BillerService ||--o{ FeeRule : has
+BillerService ||--o{ Promotion : offers
+Payment ||--o| Commission : generates
+Account ||--o{ Commission : earns
+
+FraudRule ||--o{ FraudAssessment : evaluates
+Account ||--o{ FraudAssessment : assessed account
+Payment |o--o{ FraudAssessment : assessed payment
+
+Account ||--o{ Notification : receives
+Payment |o--o{ Notification : triggers
+
+Biller ||--o{ ReconciliationRun : has
+ReconciliationRun ||--o{ ReconciliationItem : contains
+Payment |o--o{ ReconciliationItem : compared
+
+Account ||--o{ AuditEvent : performs
+
+note right of LedgerEntry
+  LedgerEntry.Amount is signed:
+  positive = credit; negative = debit.
+  Exactly one of TopUpId, PaymentId, or
+  RefundRequestId is populated.
+  Each source FK is individually UNIQUE.
+  One source operation creates at most
+  one ledger entry.
+end note
+
+note right of Wallet
+  AccountId is UNIQUE, enforcing one wallet
+  per account.
+  PostedBalance and HeldBalance are stored
+  projections; AvailableBalance =
+  PostedBalance - HeldBalance.
+end note
+
+note right of FundHold
+  PaymentId is UNIQUE: each payment has
+  zero or one hold.
+  Amount reserves Payment.TotalAmount,
+  including fees. A hold is not a posted
+  ledger debit.
+end note
+
+note right of TopUp
+  Failed or pending top-ups may have no
+  LedgerEntry. Successful top-ups create
+  one positive ledger entry.
+end note
+
+note right of Payment
+  Amount = bill amount.
+  TotalAmount = Amount + FeeAmount.
+  The wallet debit is TotalAmount.
+  UNIQUE (AccountId, IdempotencyKey).
+  Unknown payments retain their holds
+  until the outcome is resolved.
+end note
+
+note right of BillerService
+  UNIQUE (BillerId, Code).
+  CHECK (MinimumAmount >= 0).
+  CHECK (MaximumAmount >= MinimumAmount).
+end note
+
+note right of BillerCallback
+  UNIQUE (BillerIntegrationId, ExternalEventId)
+  prevents duplicate callback processing.
+end note
+
+note right of Commission
+  PaymentId is UNIQUE, so a payment
+  generates zero or one commission.
+  Commissions apply only to agent-assisted
+  payments and amounts are non-negative.
+end note
+
+note right of Notification
+  RetryCount is between 0 and 3.
+  After three failed retries, Status is
+  Undelivered.
+end note
+
+note right of ReconciliationItem
+  MatchStatus distinguishes Matched,
+  Discrepancy, and Unmatched records.
+  The current model requires PaymentId.
+  To store unmatched external settlement
+  rows, make PaymentId nullable.
+end note
+
+note "Database integrity rules:\n- Monetary values use NUMERIC(18,2), never floating point.\n- Monetary amounts, fees, commissions, and retry counts have non-negative/range checks.\n- Status, role, type, and verification values use constrained domain values.\n- Financial record and projection updates are atomic.\n- A refund is eligible only for a completed payment and creates a positive ledger entry.\n- Payment idempotency is scoped to the account." as IntegrityRules
+
+@enduml
