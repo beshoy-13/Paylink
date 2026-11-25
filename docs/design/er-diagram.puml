@@ -22,9 +22,6 @@ package "Accounts & Wallet" {
         * Id : UUID <<PK>>
         --
         * AccountId : UUID <<FK, UK>>
-        PostedBalance : NUMERIC(18,2) <<derived>>
-        HeldBalance : NUMERIC(18,2) <<derived>>
-        AvailableBalance : NUMERIC(18,2) <<derived>>
     }
 
     entity LedgerEntry {
@@ -362,7 +359,7 @@ end note
 note right of Wallet
   AccountId is UNIQUE, enforcing one wallet
   per account.
-  All balances are computed from ledger entries:
+  Computed wallet balances (not stored attributes):
   PostedBalance sums posted entries. Hold
   entries are negative and releases positive;
   HeldBalance is -SUM(hold/release Amount), and

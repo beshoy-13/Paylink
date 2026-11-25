@@ -20,9 +20,6 @@ package "Accounts & Wallet" as AccountsWallet {
     class Wallet {
         +Id
         +AccountId
-        +PostedBalance : Money {derived}
-        +HeldBalance : Money {derived}
-        +AvailableBalance : Money {derived}
     }
 
     class LedgerEntry {
@@ -89,6 +86,17 @@ package "Biller Catalog" as BillerCatalog {
 }
 
 package "Payment Processing" as PaymentProcessing {
+    enum PaymentStatus {
+        Initiated
+        FundsHeld
+        SentToBiller
+        Completed
+        Rejected
+        Failed
+        Unknown
+        Refunded
+    }
+
     class Payment {
         +Id
         +AccountId
@@ -97,7 +105,7 @@ package "Payment Processing" as PaymentProcessing {
         +Amount
         +FeeAmount
         +TotalAmount
-        +Status
+        +Status : PaymentStatus
         +BillerReference
         +CreatedAt
         +CompletedAt
@@ -114,8 +122,8 @@ package "Payment Processing" as PaymentProcessing {
     class PaymentStatusHistory {
         +Id
         +PaymentId
-        +PreviousStatus
-        +NewStatus
+        +PreviousStatus : PaymentStatus {nullable}
+        +NewStatus : PaymentStatus
         +ChangedAt
         +Reason
     }
@@ -324,8 +332,8 @@ note right of Account
 end note
 
 note right of Wallet
-  Balances are computed from ledger entries,
-  never stored: PostedBalance sums posted entries,
+  Computed wallet balances (not Wallet properties):
+  PostedBalance sums posted entries,
   HeldBalance is the negated net hold/release amount, and
   AvailableBalance = PostedBalance - HeldBalance.
   Hold entries affect HeldBalance, not PostedBalance.

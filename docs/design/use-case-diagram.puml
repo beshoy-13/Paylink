@@ -15,7 +15,6 @@ actor Scheduler as scheduler
 rectangle "PayLink System" {
     package "Customer and Account Management" {
         usecase "Register Account" as register
-        usecase "Upgrade Verification Level" as upgrade
         usecase "View Wallet Balance" as balance
         usecase "View Transaction History" as history
         usecase "Top Up Wallet" as topup
@@ -80,6 +79,7 @@ rectangle "PayLink System" {
     }
 
     package "Administration and Support" {
+        usecase "Upgrade Verification Level" as upgrade
         usecase "Manage Billers and Services" as manage_billers
         usecase "Configure Fees and Promotions" as configure_fees
         usecase "Configure Payment Limits" as configure_limits
@@ -101,7 +101,6 @@ rectangle "PayLink System" {
 }
 
 customer -- register
-customer -- upgrade
 customer -- balance
 customer -- history
 customer -- topup
@@ -115,6 +114,7 @@ agent -- cash_topup
 agent -- pay_agent
 
 admin -- manage_billers
+admin -- upgrade
 admin -- configure_fees
 admin -- configure_limits
 admin -- statistics

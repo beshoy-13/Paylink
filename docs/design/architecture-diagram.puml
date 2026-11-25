@@ -13,7 +13,7 @@ rectangle "PayLink Backend Application\nOne deployable modular monolith" as back
 
     package "Application Layer" as applicationLayer {
         component "Use Cases & Application Services" as appServices
-        component "Payment Processing\nApplication Orchestrator" as paymentOrchestrator
+        component "PayLink.Payments\nApplication Orchestrator" as paymentOrchestrator
     }
 
     package "Domain Layer" as domainLayer {
@@ -53,14 +53,16 @@ rectangle "PayLink Backend Application\nOne deployable modular monolith" as back
         }
 
         package "Notifications" as notificationsModule {
-            component "Notification Rules and Delivery State" as notificationsDomain
+            component "PayLink.Notifications\nNotification Rules and Delivery State" as notificationsDomain
         }
 
         package "Reconciliation" as reconciliationModule {
             component "Settlement Matching and Report Rules" as reconciliationDomain
         }
 
+        component "PaymentProcessing\n<<internal in-process event>>" as paymentProcessingEvent
         component "PaymentCompleted\n<<internal in-process event>>" as paymentCompleted
+        component "PaymentRefunded\n<<internal in-process event>>" as paymentRefundedEvent
     }
 
     package "Infrastructure Layer" as infrastructureLayer {
@@ -111,7 +113,9 @@ paymentOrchestrator --> feeContract : fees and promotions
 paymentOrchestrator --> fraudContract : risk assessment
 paymentOrchestrator --> billerContract : inquiry / payment / status
 paymentOrchestrator --> paymentDomain : lifecycle and idempotency
-paymentOrchestrator --> paymentCompleted : publishes outcome
+paymentOrchestrator --> paymentProcessingEvent : publishes PaymentProcessing
+paymentOrchestrator --> paymentCompleted : publishes PaymentCompleted
+paymentOrchestrator --> paymentRefundedEvent : publishes PaymentRefunded
 
 accountsDomain ..|> walletContract
 catalogDomain ..|> catalogContract
@@ -122,7 +126,9 @@ notificationsDomain ..|> notificationContract
 reconciliationDomain ..|> reconciliationContract
 paymentDomain ..|> auditContract
 
-paymentCompleted --> notificationsDomain : consumes completed outcome
+paymentProcessingEvent --> notificationsDomain : consumed by PayLink.Notifications
+paymentCompleted --> notificationsDomain : consumed by PayLink.Notifications
+paymentRefundedEvent --> notificationsDomain : consumed by PayLink.Notifications
 paymentCompleted --> reconciliationDomain : consumes relevant outcome
 paymentCompleted --> paymentDomain : records financial event
 
@@ -191,7 +197,10 @@ note right of domainLayer
 end note
 
 note right of paymentCompleted
-  PaymentCompleted is an in-process event.
+  PaymentProcessing, PaymentCompleted, and
+  PaymentRefunded are in-process events published
+  by PayLink.Payments and consumed by
+  PayLink.Notifications.
   No Kafka, RabbitMQ, or external broker
   is introduced in Phase 1.
 end note
