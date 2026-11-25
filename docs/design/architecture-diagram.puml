@@ -14,8 +14,10 @@ rectangle "PayLink Backend Application\nOne deployable modular monolith" as back
     package "Application Layer" as applicationLayer {
         component "Use Cases & Application Services" as appServices
         component "Payment Processing\nApplication Orchestrator" as paymentOrchestrator
+    }
 
-        package "Module Contracts" as contracts {
+    package "Domain Layer" as domainLayer {
+        package "Module Contracts\n(owned by the domain modules)" as contracts {
             interface "IWalletOperations" as walletContract
             interface "IBillerCatalog" as catalogContract
             interface "IFeeCalculation" as feeContract
@@ -25,9 +27,7 @@ rectangle "PayLink Backend Application\nOne deployable modular monolith" as back
             interface "IReconciliation" as reconciliationContract
             interface "IAuditWriter" as auditContract
         }
-    }
 
-    package "Domain Layer" as domainLayer {
         package "Accounts & Wallet" as accountsModule {
             component "Wallet and Financial Rules\nBalances, holds, ledger entries, top-ups" as accountsDomain
         }
@@ -37,7 +37,7 @@ rectangle "PayLink Backend Application\nOne deployable modular monolith" as back
         }
 
         package "Payment Processing" as paymentModule {
-            component "Payment Domain Rules\nLifecycle, idempotency, outcomes, refunds" as paymentDomain
+            component "Payment Domain Rules\nLifecycle, idempotency, outcomes, refunds, audit events" as paymentDomain
         }
 
         package "Biller Integration" as integrationModule {
@@ -58,10 +58,6 @@ rectangle "PayLink Backend Application\nOne deployable modular monolith" as back
 
         package "Reconciliation" as reconciliationModule {
             component "Settlement Matching and Report Rules" as reconciliationDomain
-        }
-
-        package "Auditing" as auditingModule {
-            component "Financial and Administrative Audit Rules" as auditingDomain
         }
 
         component "PaymentCompleted\n<<internal in-process event>>" as paymentCompleted
@@ -108,7 +104,6 @@ appServices ..> feesDomain : uses domain rules
 appServices ..> fraudDomain : uses domain rules
 appServices ..> notificationsDomain : uses domain rules
 appServices ..> reconciliationDomain : uses domain rules
-appServices ..> auditingDomain : uses domain rules
 
 paymentOrchestrator --> walletContract : reserve / release / ledger
 paymentOrchestrator --> catalogContract : biller service details
@@ -125,11 +120,11 @@ fraudDomain ..|> fraudContract
 integrationDomain ..|> billerContract
 notificationsDomain ..|> notificationContract
 reconciliationDomain ..|> reconciliationContract
-auditingDomain ..|> auditContract
+paymentDomain ..|> auditContract
 
 paymentCompleted --> notificationsDomain : consumes completed outcome
 paymentCompleted --> reconciliationDomain : consumes relevant outcome
-paymentCompleted --> auditingDomain : records financial event
+paymentCompleted --> paymentDomain : records financial event
 
 efPersistence ..> accountsDomain : persists module-owned data
 efPersistence ..> catalogDomain : persists module-owned data
@@ -139,7 +134,6 @@ efPersistence ..> feesDomain : persists module-owned data
 efPersistence ..> fraudDomain : persists module-owned data
 efPersistence ..> notificationsDomain : persists module-owned data
 efPersistence ..> reconciliationDomain : persists module-owned data
-efPersistence ..> auditingDomain : persists module-owned data
 efPersistence --> postgres : EF Core / PostgreSQL
 
 infrastructureLayer ..> contracts : implements contracts
@@ -207,6 +201,21 @@ note bottom of postgres
   Logical ownership remains separated by module;
   shared storage does not create direct cross-module
   repository access.
+end note
+
+note bottom of domainLayer
+  Initial table ownership:
+  Accounts & Wallet: Account, Wallet, LedgerEntry, Hold, TopUp.
+  Biller Catalog: Biller, BillerService, RequiredField.
+  Payment Processing: Payment, PaymentStatusHistory,
+  RefundRequest, IdempotencyKey, AuditEvent.
+  Biller Integration: BillerIntegration, BillerCallback.
+  Fees & Commissions: FeeRule, Promotion, Commission.
+  Fraud Checks: FraudRule, FraudAssessment, ConfigSetting.
+  Notifications: Notification.
+  Reconciliation: SettlementFile, ReconciliationRun,
+  ReconciliationItem.
+  Auditing is owned by Payment Processing, not a ninth module.
 end note
 
 @enduml

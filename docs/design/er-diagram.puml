@@ -22,24 +22,25 @@ package "Accounts & Wallet" {
         * Id : UUID <<PK>>
         --
         * AccountId : UUID <<FK, UK>>
-        PostedBalance : NUMERIC(18,2)
-        HeldBalance : NUMERIC(18,2)
+        PostedBalance : NUMERIC(18,2) <<derived>>
+        HeldBalance : NUMERIC(18,2) <<derived>>
+        AvailableBalance : NUMERIC(18,2) <<derived>>
     }
 
     entity LedgerEntry {
         * Id : UUID <<PK>>
         --
         * WalletId : UUID <<FK>>
-        TopUpId : UUID <<FK, UK, nullable>>
-        PaymentId : UUID <<FK, UK, nullable>>
-        RefundRequestId : UUID <<FK, UK, nullable>>
+        TopUpId : UUID <<FK, nullable>>
+        PaymentId : UUID <<FK, nullable>>
+        RefundRequestId : UUID <<FK, nullable>>
         Amount : NUMERIC(18,2)
         EntryType : VARCHAR(32)
         Description : TEXT
         CreatedAt : TIMESTAMPTZ
     }
 
-    entity FundHold {
+    entity Hold {
         * Id : UUID <<PK>>
         --
         * WalletId : UUID <<FK>>
@@ -106,10 +107,18 @@ package "Payment Processing" {
         FeeAmount : NUMERIC(18,2)
         TotalAmount : NUMERIC(18,2)
         Status : VARCHAR(32)
-        IdempotencyKey : VARCHAR(255)
         BillerReference : VARCHAR(255) <<nullable>>
         CreatedAt : TIMESTAMPTZ
         CompletedAt : TIMESTAMPTZ <<nullable>>
+    }
+
+    entity IdempotencyKey {
+        * Id : UUID <<PK>>
+        --
+        * AccountId : UUID <<FK>>
+        * PaymentId : UUID <<FK, UK>>
+        Key : VARCHAR(255) <<UK (AccountId, Key)>>
+        CreatedAt : TIMESTAMPTZ
     }
 
     entity PaymentStatusHistory {
@@ -132,6 +141,17 @@ package "Payment Processing" {
         ApprovedBy : UUID <<FK, nullable>>
         CreatedAt : TIMESTAMPTZ
         ApprovedAt : TIMESTAMPTZ <<nullable>>
+    }
+
+    entity AuditEvent {
+        * Id : UUID <<PK>>
+        --
+        ActorAccountId : UUID <<FK, nullable>>
+        EventType : VARCHAR(64)
+        EntityType : VARCHAR(128)
+        EntityId : UUID
+        Details : JSONB
+        CreatedAt : TIMESTAMPTZ
     }
 }
 
@@ -215,6 +235,15 @@ package "Fraud Checks" {
         Reason : TEXT
         AssessedAt : TIMESTAMPTZ
     }
+
+    entity ConfigSetting {
+        * Id : UUID <<PK>>
+        --
+        Key : VARCHAR(128) <<UK>>
+        Value : JSONB
+        UpdatedByAccountId : UUID <<FK, nullable>>
+        UpdatedAt : TIMESTAMPTZ
+    }
 }
 
 package "Notifications" {
@@ -234,10 +263,23 @@ package "Notifications" {
 }
 
 package "Reconciliation" {
+    entity SettlementFile {
+        * Id : UUID <<PK>>
+        --
+        * BillerId : UUID <<FK>>
+        FileName : VARCHAR(255)
+        FileHash : VARCHAR(128) <<UK>>
+        StorageReference : TEXT
+        Status : VARCHAR(32)
+        ReceivedAt : TIMESTAMPTZ
+        ProcessedAt : TIMESTAMPTZ <<nullable>>
+    }
+
     entity ReconciliationRun {
         * Id : UUID <<PK>>
         --
         * BillerId : UUID <<FK>>
+        SettlementFileId : UUID <<FK, nullable>>
         StartedAt : TIMESTAMPTZ
         CompletedAt : TIMESTAMPTZ <<nullable>>
         Status : VARCHAR(32)
@@ -257,30 +299,19 @@ package "Reconciliation" {
     }
 }
 
-package "Auditing" {
-    entity AuditEvent {
-        * Id : UUID <<PK>>
-        --
-        * ActorAccountId : UUID <<FK>>
-        EventType : VARCHAR(64)
-        EntityType : VARCHAR(128)
-        EntityId : UUID
-        Details : JSONB
-        CreatedAt : TIMESTAMPTZ
-    }
-}
-
 Account ||--|| Wallet : owns
 Wallet ||--o{ LedgerEntry : contains
-Wallet ||--o{ FundHold : maintains
+Wallet ||--o{ Hold : maintains
 Wallet ||--o{ TopUp : receives
 Account ||--o{ TopUp : initiates
 
-TopUp ||--o| LedgerEntry : generates
-Payment ||--o| LedgerEntry : generates
-RefundRequest ||--o| LedgerEntry : generates
+TopUp ||--o{ LedgerEntry : generates
+Payment ||--o{ LedgerEntry : generates
+RefundRequest ||--o{ LedgerEntry : generates
 
-Payment ||--o| FundHold : reserves
+Payment ||--o| Hold : reserves
+Payment ||--|| IdempotencyKey : deduplicated by
+Account ||--o{ IdempotencyKey : scopes
 Account ||--o{ Payment : makes
 Account |o--o{ Payment : agent account
 BillerService ||--o{ Payment : targeted by
@@ -303,55 +334,74 @@ Account ||--o{ Commission : earns
 FraudRule ||--o{ FraudAssessment : evaluates
 Account ||--o{ FraudAssessment : assessed account
 Payment |o--o{ FraudAssessment : assessed payment
+Account |o--o{ ConfigSetting : updates
 
 Account ||--o{ Notification : receives
 Payment |o--o{ Notification : triggers
 
 Biller ||--o{ ReconciliationRun : has
+Biller ||--o{ SettlementFile : provides
+SettlementFile ||--o| ReconciliationRun : imported as
 ReconciliationRun ||--o{ ReconciliationItem : contains
 Payment |o--o{ ReconciliationItem : compared
 
-Account ||--o{ AuditEvent : performs
+Account |o--o{ AuditEvent : optional actor
 
 note right of LedgerEntry
   LedgerEntry.Amount is signed:
   positive = credit; negative = debit.
   Exactly one of TopUpId, PaymentId, or
   RefundRequestId is populated.
-  Each source FK is individually UNIQUE.
-  One source operation creates at most
-  one ledger entry.
+  A source operation may create multiple entries.
+  EntryType distinguishes holds, hold releases,
+  charges, fee income, commissions, top-ups,
+  and refunds. Hold entries change HeldBalance;
+  they do not post a wallet debit.
 end note
 
 note right of Wallet
   AccountId is UNIQUE, enforcing one wallet
   per account.
-  PostedBalance and HeldBalance are stored
-  projections; AvailableBalance =
-  PostedBalance - HeldBalance.
+  All balances are computed from ledger entries:
+  PostedBalance sums posted entries. Hold
+  entries are negative and releases positive;
+  HeldBalance is -SUM(hold/release Amount), and
+  AvailableBalance = PostedBalance - HeldBalance.
+  Requests to set balances directly are rejected.
 end note
 
-note right of FundHold
+note right of Hold
   PaymentId is UNIQUE: each payment has
   zero or one hold.
   Amount reserves Payment.TotalAmount,
-  including fees. A hold is not a posted
-  ledger debit.
+  including fees. Hold and release movements
+  are represented by LedgerEntry rows.
 end note
 
 note right of TopUp
   Failed or pending top-ups may have no
-  LedgerEntry. Successful top-ups create
-  one positive ledger entry.
+  LedgerEntry. Successful card top-ups create
+  one entry; agent cash top-ups create two
+  entries for the source and destination wallets.
 end note
 
 note right of Payment
   Amount = bill amount.
   TotalAmount = Amount + FeeAmount.
   The wallet debit is TotalAmount.
-  UNIQUE (AccountId, IdempotencyKey).
+  Payment ledger entries include the hold,
+  final charge, fee income, and applicable
+  agent commission; a hold release has its
+  own entry. IdempotencyKey is a separate
+  record, unique by (AccountId, Key).
   Unknown payments retain their holds
   until the outcome is resolved.
+end note
+
+note right of IdempotencyKey
+  UNIQUE (AccountId, Key) prevents duplicate
+  requests within an account. PaymentId is
+  UNIQUE so a payment has one idempotency key.
 end note
 
 note right of BillerService
@@ -381,11 +431,15 @@ end note
 note right of ReconciliationItem
   MatchStatus distinguishes Matched,
   Discrepancy, and Unmatched records.
-  The current model requires PaymentId.
-  To store unmatched external settlement
-  rows, make PaymentId nullable.
+  PaymentId is nullable so unmatched external
+  settlement rows can be stored.
 end note
 
-note "Database integrity rules:\n- Monetary values use NUMERIC(18,2), never floating point.\n- Monetary amounts, fees, commissions, and retry counts have non-negative/range checks.\n- Status, role, type, and verification values use constrained domain values.\n- Financial record and projection updates are atomic.\n- A refund is eligible only for a completed payment and creates a positive ledger entry.\n- Payment idempotency is scoped to the account." as IntegrityRules
+note right of SettlementFile
+  FileHash prevents importing the same
+  settlement file more than once.
+end note
+
+note "Database integrity rules:\n- Monetary values use NUMERIC(18,2), never floating point.\n- Monetary amounts, fees, commissions, and retry counts have non-negative/range checks.\n- Status, role, type, and verification values use constrained domain values.\n- Financial record and ledger updates are atomic.\n- A refund is eligible only for a completed payment and creates a positive ledger entry.\n- Admin-editable limits are stored as ConfigSetting values; fees and promotions use FeeRule and Promotion." as IntegrityRules
 
 @enduml

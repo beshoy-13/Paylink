@@ -10,6 +10,7 @@ actor "Support Employee" as support
 actor "Biller Systems" as billers
 actor "Notification Provider" as notifications
 actor "Simulated Card Payment System" as cards
+actor Scheduler as scheduler
 
 rectangle "PayLink System" {
     package "Customer and Account Management" {
@@ -27,7 +28,7 @@ rectangle "PayLink System" {
     package "Wallet and Top-Up Operations" {
         usecase "Process Card Top-Up" as card_topup
         usecase "Process Agent Cash Top-Up" as cash_topup
-        usecase "Record Top-Up Ledger Entry" as record_topup
+        usecase "Record Top-Up Ledger Entries" as record_topup
         usecase "Validate Top-Up" as validate_topup
         usecase "Maintain Ledger Consistency" as ledger_consistency
     }
@@ -37,6 +38,8 @@ rectangle "PayLink System" {
         usecase "Pay Bill on Behalf of Customer" as pay_agent
         usecase "Enforce Idempotency" as idempotency
         usecase "Validate Payment State Transitions" as state_transition
+        usecase "Record Financial Audit Event" as financial_audit
+        usecase "Run Fraud Checks" as fraud_checks
         usecase "Check Single Payment Limit" as single_limit
         usecase "Check Daily Payment Limit" as daily_limit
         usecase "Check Velocity Rule" as velocity
@@ -46,6 +49,8 @@ rectangle "PayLink System" {
         usecase "Apply Promotions" as promotions
         usecase "Reserve Funds" as reserve
         usecase "Release Reserved Funds" as release
+        usecase "Record Hold Ledger Entry" as hold_ledger
+        usecase "Record Hold Release Ledger Entry" as release_ledger
         usecase "Record Payment Ledger Entries" as payment_ledger
         usecase "Send Biller Payment Request" as send_payment
         usecase "Process Biller Response" as biller_response
@@ -85,14 +90,13 @@ rectangle "PayLink System" {
         usecase "Approve Refund" as approve_refund
         usecase "Process Refund" as process_refund
         usecase "Record Refund Ledger Entry" as refund_ledger
+        usecase "Record Administrative Audit Event" as administrative_audit
         usecase "View Daily Statistics" as statistics
     }
 
-    package "Reconciliation and Auditing" {
+    package "Reconciliation" {
         usecase "Reconcile Payments" as reconcile
         usecase "Generate Reconciliation Report" as reconciliation_report
-        usecase "Record Financial Audit Event" as financial_audit
-        usecase "Record Administrative Audit Event" as administrative_audit
     }
 }
 
@@ -132,6 +136,9 @@ notifications -- sms
 notifications -- push
 notifications -- email
 cards -- card_topup
+scheduler -- requery
+scheduler -- retry_notification
+scheduler -- reconcile
 
 topup ..> card_topup : <<include>>
 topup ..> validate_topup : <<include>>
@@ -151,18 +158,21 @@ inquire ..> fees : <<include>>
 
 pay_bill ..> idempotency : <<include>>
 pay_bill ..> state_transition : <<include>>
-pay_bill ..> single_limit : <<include>>
-pay_bill ..> daily_limit : <<include>>
-pay_bill ..> velocity : <<include>>
-pay_bill ..> account_status : <<include>>
+pay_bill ..> fraud_checks : <<include>>
 pay_bill ..> fees : <<include>>
 pay_bill ..> promotions : <<include>>
 pay_bill ..> reserve : <<include>>
 pay_bill ..> payment_ledger : <<include>>
+payment_ledger ..> hold_ledger : <<include>>
+release ..> release_ledger : <<include>>
 pay_bill ..> send_payment : <<include>>
 pay_agent ..> pay_bill : <<include>>
 agent_commission ..> record_commission : <<include>>
 
+fraud_checks ..> single_limit : <<include>>
+fraud_checks ..> daily_limit : <<include>>
+fraud_checks ..> velocity : <<include>>
+fraud_checks ..> account_status : <<include>>
 block_temporary ..> velocity : <<extend>>
 timeout ..> send_payment : <<extend>>
 unknown ..> timeout : <<extend>>

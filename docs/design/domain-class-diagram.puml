@@ -20,21 +20,24 @@ package "Accounts & Wallet" as AccountsWallet {
     class Wallet {
         +Id
         +AccountId
-        +PostedBalance
-        +HeldBalance
+        +PostedBalance : Money {derived}
+        +HeldBalance : Money {derived}
+        +AvailableBalance : Money {derived}
     }
 
     class LedgerEntry {
         +Id
         +WalletId
+        +TopUpId : UUID {nullable}
+        +PaymentId : UUID {nullable}
+        +RefundRequestId : UUID {nullable}
         +Amount
         +EntryType
-        +ReferenceId
         +Description
         +CreatedAt
     }
 
-    class FundHold {
+    class Hold {
         +Id
         +WalletId
         +PaymentId
@@ -95,10 +98,17 @@ package "Payment Processing" as PaymentProcessing {
         +FeeAmount
         +TotalAmount
         +Status
-        +IdempotencyKey
         +BillerReference
         +CreatedAt
         +CompletedAt
+    }
+
+    class IdempotencyKey {
+        +Id
+        +AccountId
+        +PaymentId
+        +Key {unique with AccountId}
+        +CreatedAt
     }
 
     class PaymentStatusHistory {
@@ -119,6 +129,16 @@ package "Payment Processing" as PaymentProcessing {
         +ApprovedBy
         +CreatedAt
         +ApprovedAt
+    }
+
+    class AuditEvent {
+        +Id
+        +ActorAccountId : UUID {nullable}
+        +EventType
+        +EntityType
+        +EntityId
+        +Details
+        +CreatedAt
     }
 }
 
@@ -194,6 +214,14 @@ package "Fraud Checks" as FraudChecks {
         +Reason
         +AssessedAt
     }
+
+    class ConfigSetting {
+        +Id
+        +Key
+        +Value
+        +UpdatedByAccountId : UUID {nullable}
+        +UpdatedAt
+    }
 }
 
 package "Notifications" as Notifications {
@@ -212,9 +240,21 @@ package "Notifications" as Notifications {
 }
 
 package "Reconciliation" as Reconciliation {
+    class SettlementFile {
+        +Id
+        +BillerId
+        +FileName
+        +FileHash
+        +StorageReference
+        +Status
+        +ReceivedAt
+        +ProcessedAt
+    }
+
     class ReconciliationRun {
         +Id
         +BillerId
+        +SettlementFileId : UUID {nullable}
         +StartedAt
         +CompletedAt
         +Status
@@ -224,7 +264,7 @@ package "Reconciliation" as Reconciliation {
     class ReconciliationItem {
         +Id
         +ReconciliationRunId
-        +PaymentId
+        +PaymentId : UUID {nullable}
         +ExternalReference
         +InternalAmount
         +ExternalAmount
@@ -233,24 +273,14 @@ package "Reconciliation" as Reconciliation {
     }
 }
 
-package "Auditing" as Auditing {
-    class AuditEvent {
-        +Id
-        +ActorAccountId
-        +EventType
-        +EntityType
-        +EntityId
-        +Details
-        +CreatedAt
-    }
-}
-
 Account "1" -- "1" Wallet : owns
 Wallet "1" -- "0..*" LedgerEntry : contains
-Wallet "1" -- "0..*" FundHold : maintains
+Wallet "1" -- "0..*" Hold : maintains
 Wallet "1" -- "0..*" TopUp : receives
-TopUp "1" -- "0..1" LedgerEntry : successful top-up creates
-FundHold "0..*" -- "1" Payment : reserves funds for
+TopUp "1" -- "0..*" LedgerEntry : creates
+Payment "1" -- "0..*" LedgerEntry : creates
+RefundRequest "1" -- "0..*" LedgerEntry : approved refund creates
+Payment "1" -- "0..1" Hold : reserves funds
 TopUp "0..*" -- "1" Account : initiated by
 
 Biller "1" -- "0..*" BillerService : offers
@@ -258,10 +288,12 @@ BillerService "1" -- "0..*" RequiredField : defines
 
 Account "1" -- "0..*" Payment : makes
 Account "0..1" -- "0..*" Payment : agent-assisted payment
+Account "1" -- "0..*" IdempotencyKey : scopes
+Payment "1" -- "1" IdempotencyKey : deduplicated by
 BillerService "1" -- "0..*" Payment : targeted by
 Payment "1" -- "0..*" PaymentStatusHistory : records
 Payment "1" -- "0..*" RefundRequest : may have
-RefundRequest "1" -- "0..1" LedgerEntry : approved refund creates
+Account "0..1" -- "0..*" AuditEvent : optional actor
 
 Biller "1" -- "1" BillerIntegration : configured by
 BillerIntegration "1" -- "0..*" BillerCallback : receives
@@ -275,15 +307,16 @@ Account "1" -- "0..*" Commission : agent earns
 FraudRule "1" -- "0..*" FraudAssessment : used in
 Account "1" -- "0..*" FraudAssessment : assessed account
 Payment "0..1" -- "0..*" FraudAssessment : assessed payment
+Account "0..1" -- "0..*" ConfigSetting : updates
 
 Account "1" -- "0..*" Notification : receives
 Payment "0..1" -- "0..*" Notification : may trigger
 
 Biller "1" -- "0..*" ReconciliationRun : has
+Biller "1" -- "0..*" SettlementFile : provides
+SettlementFile "1" -- "0..1" ReconciliationRun : imported as
 ReconciliationRun "1" -- "0..*" ReconciliationItem : contains
-Payment "1" -- "0..*" ReconciliationItem : compared in
-
-Account "1" -- "0..*" AuditEvent : performs
+Payment "0..1" -- "0..*" ReconciliationItem : compared in
 
 note right of Account
   Role represents Customer, Agent,
@@ -291,9 +324,12 @@ note right of Account
 end note
 
 note right of Wallet
+  Balances are computed from ledger entries,
+  never stored: PostedBalance sums posted entries,
+  HeldBalance is the negated net hold/release amount, and
   AvailableBalance = PostedBalance - HeldBalance.
-  PostedBalance and HeldBalance are maintained
-  projections verified against financial records.
+  Hold entries affect HeldBalance, not PostedBalance.
+  Balance values cannot be set directly.
 end note
 
 note right of TopUp
@@ -303,9 +339,14 @@ note right of TopUp
 end note
 
 note right of Payment
-  IdempotencyKey is unique within
-  the appropriate account scope.
   FeeAmount stores the actual fee charged.
+  Ledger entries may include hold, final charge,
+  fee income, commission, and hold release entries.
+end note
+
+note right of IdempotencyKey
+  Key is unique within AccountId.
+  Each Payment has exactly one key.
 end note
 
 note right of Commission
