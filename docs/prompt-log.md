@@ -1,3 +1,4 @@
+
 # PayLink Project — AI Prompt Log
 
 This document tracks all AI interactions across the PayLink project lifecycle, as required by the project specification and course guidelines.
@@ -18,6 +19,11 @@ This document tracks all AI interactions across the PayLink project lifecycle, a
 | 2026-11-23 | Ebrahem Hassan | Design README refinement | GitHub Copilot (Copilot Fusion) | Refine the README by standardizing module names, adding initial data ownership for all eight modules, correcting Markdown formatting, and preserving existing decisions.               | Updated the README with consistent module names and an initial module data ownership table.                                    | **Accepted** – The revised content was reviewed and aligned with the agreed architectural decisions and Phase 1 scope.                   |
 | 2026-11-23 | Ebrahem Hassan | Use Case Diagram – Actor Identification | ChatGPT (GPT-6) | Identify all actors involved in the PayLink system based on the functional requirements. | Proposed the initial actors and their responsibilities, distinguishing external actors from internal system modules. | **Fixed** – Reviewed actor responsibilities and refined the grouping to avoid unnecessary actors. |
 | 2026-11-24 | Ebrahem Hassan | Domain Class Diagram Creation | GitHub Copilot (Copilot Fusion) | Create the PayLink Domain Class Diagram using PlantUML, organizing domain classes into modules, defining attributes and relationships with multiplicities, and documenting important business rules. | Created the PayLink domain class diagram in PlantUML with module packages, domain classes, attributes, relationships, multiplicities, and business-rule notes. | **Fixed** – The diagram was reviewed and corrected to align multiplicities and agent-assisted commission behavior with the domain decisions. |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Fix the NU1903 vulnerability warning for Microsoft.OpenApi in the Web API project | Add the Microsoft.OpenApi package with no version | Rejected: it installed 3.11.1, the template's generator needs 2.x, and the build failed with CS0200 |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Update the package that pulls in Microsoft.OpenApi | Add Microsoft.AspNetCore.OpenApi with no version | Rejected: it installed the .NET 11 build, the compiler could not use the analyzer (CS9057) and AddOpenApi disappeared |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Same fix, pinned to the .NET 10 line | Add Microsoft.AspNetCore.OpenApi with --version 10.0.* | Accepted: 10.0.15 resolved Microsoft.OpenApi 2.13.0, the warning disappeared and the build passes |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Write the GitHub Actions workflow for build, format check, test and Docker build | Used actions/checkout v4 and actions/setup-dotnet v4 | Fixed: the release pages show checkout v7.0.1 and setup-dotnet v6.1.0, and the AI could not verify versions by search |
+| 2026-11-23 | Beshoy (C) | DevOps | Claude Sonnet 5.5 | Branch protection on a private repo with GitHub Free | Suggested making the repo public as a fallback | Fixed: the brief requires a private repo, so the TA must be told and the repo switched back after the Student Pack |
 
 ---
 
@@ -32,3 +38,4 @@ Add new rows to the bottom of the table using the following column order:
 5. **Prompt** (The exact prompt or structured prompt template used)
 6. **Summary of Answer** (Brief summary of what the AI returned)
 7. **Verdict & Why** (`ACCEPTED`, `FIXED`, or `REJECTED`, with a concrete technical explanation)
+
