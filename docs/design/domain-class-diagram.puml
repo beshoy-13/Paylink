@@ -1,0 +1,384 @@
+@startuml PayLink Domain Class Diagram
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+hide empty members
+
+package "Accounts & Wallet" as AccountsWallet {
+    class Account {
+        +Id
+        +FullName
+        +Email
+        +PhoneNumber
+        +PasswordHash
+        +Role
+        +VerificationLevel
+        +Status
+        +CreatedAt
+    }
+
+    class Wallet {
+        +Id
+        +AccountId
+    }
+
+    class LedgerEntry {
+        +Id
+        +WalletId
+        +TopUpId : UUID {nullable}
+        +PaymentId : UUID {nullable}
+        +RefundRequestId : UUID {nullable}
+        +Amount
+        +EntryType
+        +Description
+        +CreatedAt
+    }
+
+    class Hold {
+        +Id
+        +WalletId
+        +PaymentId
+        +Amount
+        +Status
+        +CreatedAt
+        +ReleasedAt
+    }
+
+    class TopUp {
+        +Id
+        +WalletId
+        +InitiatedByAccountId
+        +Amount
+        +Method
+        +Status
+        +ExternalReference
+        +CreatedAt
+        +CompletedAt
+    }
+}
+
+package "Biller Catalog" as BillerCatalog {
+    class Biller {
+        +Id
+        +Name
+        +Code
+        +Status
+    }
+
+    class BillerService {
+        +Id
+        +BillerId
+        +Name
+        +Code
+        +MinimumAmount
+        +MaximumAmount
+        +Status
+    }
+
+    class RequiredField {
+        +Id
+        +BillerServiceId
+        +Name
+        +DataType
+        +IsRequired
+        +ValidationRules
+    }
+}
+
+package "Payment Processing" as PaymentProcessing {
+    enum PaymentStatus {
+        Initiated
+        FundsHeld
+        SentToBiller
+        Completed
+        Rejected
+        Failed
+        Unknown
+        Refunded
+    }
+
+    class Payment {
+        +Id
+        +AccountId
+        +AgentAccountId
+        +BillerServiceId
+        +Amount
+        +FeeAmount
+        +TotalAmount
+        +Status : PaymentStatus
+        +BillerReference
+        +CreatedAt
+        +CompletedAt
+    }
+
+    class IdempotencyKey {
+        +Id
+        +AccountId
+        +PaymentId
+        +Key {unique with AccountId}
+        +CreatedAt
+    }
+
+    class PaymentStatusHistory {
+        +Id
+        +PaymentId
+        +PreviousStatus : PaymentStatus {nullable}
+        +NewStatus : PaymentStatus
+        +ChangedAt
+        +Reason
+    }
+
+    class RefundRequest {
+        +Id
+        +PaymentId
+        +RequestedBy
+        +Reason
+        +Status
+        +ApprovedBy
+        +CreatedAt
+        +ApprovedAt
+    }
+
+    class AuditEvent {
+        +Id
+        +ActorAccountId : UUID {nullable}
+        +EventType
+        +EntityType
+        +EntityId
+        +Details
+        +CreatedAt
+    }
+}
+
+package "Biller Integration" as BillerIntegrationModule {
+    class BillerIntegration {
+        +Id
+        +BillerId
+        +Protocol
+        +Endpoint
+        +Configuration
+        +TimeoutSeconds
+        +RetryPolicy
+        +Status
+    }
+
+    class BillerCallback {
+        +Id
+        +BillerIntegrationId
+        +PaymentId
+        +ExternalEventId
+        +ReceivedAt
+        +ProcessingStatus
+        +ProcessedAt
+    }
+}
+
+package "Fees & Commissions" as FeesCommissions {
+    class FeeRule {
+        +Id
+        +BillerServiceId
+        +FeeType
+        +FeeValue
+        +MinimumFee
+        +MaximumFee
+        +IsActive
+    }
+
+    class Promotion {
+        +Id
+        +BillerServiceId
+        +Name
+        +DiscountType
+        +DiscountValue
+        +StartDate
+        +EndDate
+        +IsActive
+    }
+
+    class Commission {
+        +Id
+        +PaymentId
+        +AgentAccountId
+        +Amount
+        +Status
+        +CreatedAt
+    }
+}
+
+package "Fraud Checks" as FraudChecks {
+    class FraudRule {
+        +Id
+        +Name
+        +RuleType
+        +Configuration
+        +IsActive
+    }
+
+    class FraudAssessment {
+        +Id
+        +AccountId
+        +PaymentId
+        +Result
+        +Reason
+        +AssessedAt
+    }
+
+    class ConfigSetting {
+        +Id
+        +Key
+        +Value
+        +UpdatedByAccountId : UUID {nullable}
+        +UpdatedAt
+    }
+}
+
+package "Notifications" as Notifications {
+    class Notification {
+        +Id
+        +AccountId
+        +PaymentId
+        +Channel
+        +Recipient
+        +Template
+        +Status
+        +RetryCount
+        +CreatedAt
+        +SentAt
+    }
+}
+
+package "Reconciliation" as Reconciliation {
+    class SettlementFile {
+        +Id
+        +BillerId
+        +FileName
+        +FileHash
+        +StorageReference
+        +Status
+        +ReceivedAt
+        +ProcessedAt
+    }
+
+    class ReconciliationRun {
+        +Id
+        +BillerId
+        +SettlementFileId : UUID {nullable}
+        +StartedAt
+        +CompletedAt
+        +Status
+        +ReportReference
+    }
+
+    class ReconciliationItem {
+        +Id
+        +ReconciliationRunId
+        +PaymentId : UUID {nullable}
+        +ExternalReference
+        +InternalAmount
+        +ExternalAmount
+        +MatchStatus
+        +Difference
+    }
+}
+
+Account "1" -- "1" Wallet : owns
+Wallet "1" -- "0..*" LedgerEntry : contains
+Wallet "1" -- "0..*" Hold : maintains
+Wallet "1" -- "0..*" TopUp : receives
+TopUp "1" -- "0..*" LedgerEntry : creates
+Payment "1" -- "0..*" LedgerEntry : creates
+RefundRequest "1" -- "0..*" LedgerEntry : approved refund creates
+Payment "1" -- "0..1" Hold : reserves funds
+TopUp "0..*" -- "1" Account : initiated by
+
+Biller "1" -- "0..*" BillerService : offers
+BillerService "1" -- "0..*" RequiredField : defines
+
+Account "1" -- "0..*" Payment : makes
+Account "0..1" -- "0..*" Payment : agent-assisted payment
+Account "1" -- "0..*" IdempotencyKey : scopes
+Payment "1" -- "1" IdempotencyKey : deduplicated by
+BillerService "1" -- "0..*" Payment : targeted by
+Payment "1" -- "0..*" PaymentStatusHistory : records
+Payment "1" -- "0..*" RefundRequest : may have
+Account "0..1" -- "0..*" AuditEvent : optional actor
+
+Biller "1" -- "1" BillerIntegration : configured by
+BillerIntegration "1" -- "0..*" BillerCallback : receives
+Payment "1" -- "0..*" BillerCallback : associated callbacks
+
+BillerService "1" -- "0..*" FeeRule : has
+BillerService "1" -- "0..*" Promotion : offers
+Payment "1" -- "0..1" Commission : may generate
+Account "1" -- "0..*" Commission : agent earns
+
+FraudRule "1" -- "0..*" FraudAssessment : used in
+Account "1" -- "0..*" FraudAssessment : assessed account
+Payment "0..1" -- "0..*" FraudAssessment : assessed payment
+Account "0..1" -- "0..*" ConfigSetting : updates
+
+Account "1" -- "0..*" Notification : receives
+Payment "0..1" -- "0..*" Notification : may trigger
+
+Biller "1" -- "0..*" ReconciliationRun : has
+Biller "1" -- "0..*" SettlementFile : provides
+SettlementFile "1" -- "0..1" ReconciliationRun : imported as
+ReconciliationRun "1" -- "0..*" ReconciliationItem : contains
+Payment "0..1" -- "0..*" ReconciliationItem : compared in
+
+note right of Account
+  Role represents Customer, Agent,
+  Admin, and Support Employee.
+end note
+
+note right of Wallet
+  Computed wallet balances (not Wallet properties):
+  PostedBalance sums posted entries,
+  HeldBalance is the negated net hold/release amount, and
+  AvailableBalance = PostedBalance - HeldBalance.
+  Hold entries affect HeldBalance, not PostedBalance.
+  Balance values cannot be set directly.
+end note
+
+note right of TopUp
+  Method distinguishes Card and Agent Cash.
+  Failed or pending top-ups may have no ledger entry.
+  Financial updates are atomic.
+end note
+
+note right of Payment
+  FeeAmount stores the actual fee charged.
+  Ledger entries may include hold, final charge,
+  fee income, commission, and hold release entries.
+end note
+
+note right of IdempotencyKey
+  Key is unique within AccountId.
+  Each Payment has exactly one key.
+end note
+
+note right of Commission
+  A Commission is generated only
+  for agent-assisted payments.
+end note
+
+note right of FraudRule
+  Rules cover blocked accounts, single-payment
+  limits, daily limits, and velocity checks.
+  More than 5 payments within 60 seconds
+  causes a 10-minute temporary account block.
+end note
+
+note right of Notification
+  Supported channels: SMS, Push, Email.
+  Failed notifications retry up to three times;
+  exhausted retries become Undelivered.
+end note
+
+note right of RefundRequest
+  Only eligible completed payments can be refunded.
+  RefundRequest represents both the request
+  and support approval; no Refund class exists.
+end note
+
+@enduml

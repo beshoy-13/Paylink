@@ -1,0 +1,230 @@
+@startuml PayLink Architecture Diagram
+left to right direction
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam linetype ortho
+
+rectangle "PayLink Backend Application\nOne deployable modular monolith" as backend {
+    package "Presentation Layer" as presentationLayer {
+        component "ASP.NET Core Web API\nControllers / API Endpoints\nRequest Handling / API Responses" as api
+        component "OpenAPI / Swagger" as openapi
+    }
+
+    package "Application Layer" as applicationLayer {
+        component "Use Cases & Application Services" as appServices
+        component "PayLink.Payments\nApplication Orchestrator" as paymentOrchestrator
+    }
+
+    package "Domain Layer" as domainLayer {
+        package "Module Contracts\n(owned by the domain modules)" as contracts {
+            interface "IWalletOperations" as walletContract
+            interface "IBillerCatalog" as catalogContract
+            interface "IFeeCalculation" as feeContract
+            interface "IFraudAssessment" as fraudContract
+            interface "IBillerAdapter" as billerContract
+            interface "INotificationDispatch" as notificationContract
+            interface "IReconciliation" as reconciliationContract
+            interface "IAuditWriter" as auditContract
+        }
+
+        package "Accounts & Wallet" as accountsModule {
+            component "Wallet and Financial Rules\nBalances, holds, ledger entries, top-ups" as accountsDomain
+        }
+
+        package "Biller Catalog" as catalogModule {
+            component "Biller and Service Rules\nRequired fields and payment ranges" as catalogDomain
+        }
+
+        package "Payment Processing" as paymentModule {
+            component "Payment Domain Rules\nLifecycle, idempotency, outcomes, refunds, audit events" as paymentDomain
+        }
+
+        package "Biller Integration" as integrationModule {
+            component "Integration Contracts and Policies\nTimeouts, retries, callbacks" as integrationDomain
+        }
+
+        package "Fees & Commissions" as feesModule {
+            component "Fee, Promotion and Commission Rules" as feesDomain
+        }
+
+        package "Fraud Checks" as fraudModule {
+            component "Fraud Rules and Assessments\nLimits, velocity and account status" as fraudDomain
+        }
+
+        package "Notifications" as notificationsModule {
+            component "PayLink.Notifications\nNotification Rules and Delivery State" as notificationsDomain
+        }
+
+        package "Reconciliation" as reconciliationModule {
+            component "Settlement Matching and Report Rules" as reconciliationDomain
+        }
+
+        component "PaymentProcessing\n<<internal in-process event>>" as paymentProcessingEvent
+        component "PaymentCompleted\n<<internal in-process event>>" as paymentCompleted
+        component "PaymentRefunded\n<<internal in-process event>>" as paymentRefundedEvent
+    }
+
+    package "Infrastructure Layer" as infrastructureLayer {
+        component "EF Core Persistence Implementations\nModule-owned repositories and mappings" as efPersistence
+        database "PostgreSQL\nShared database with logical module ownership" as postgres
+
+        component "Biller Integration Implementations" as billerInfrastructure
+        component "Notification Provider Implementations" as notificationInfrastructure
+        component "Simulated Card Payment Implementation" as cardInfrastructure
+        component "Settlement File Processing" as settlementInfrastructure
+
+        component "ElectroCoAdapter" as electroAdapter
+        component "AquaCoAdapter" as aquaAdapter
+        component "TopUpNetAdapter" as topUpAdapter
+        component "NetCoAdapter\n(optional)" as netAdapter
+    }
+}
+
+cloud "ElectroCo\nREST API" as electroCo
+cloud "AquaCo\nXML/SOAP-like HTTP" as aquaCo
+cloud "TopUpNet\nREST API + async callbacks" as topUpNet
+cloud "NetCo\nOptional batch CSV integration" as netCo
+
+cloud "SMS Provider" as smsProvider
+cloud "Push Notification Provider" as pushProvider
+cloud "Email Provider" as emailProvider
+cloud "Simulated Card Payment System" as cardSystem
+
+component "Docker Compose\nLocal application and database setup" as docker
+component "GitHub Actions\nBuild and test automation" as githubActions
+component "xUnit\nUnit and integration tests" as xunit
+
+api --> appServices : invokes use cases
+api --> openapi : publishes API contract
+appServices --> paymentOrchestrator : coordinates payment flow
+
+appServices ..> accountsDomain : uses domain rules
+appServices ..> catalogDomain : uses domain rules
+appServices ..> paymentDomain : uses domain rules
+appServices ..> feesDomain : uses domain rules
+appServices ..> fraudDomain : uses domain rules
+appServices ..> notificationsDomain : uses domain rules
+appServices ..> reconciliationDomain : uses domain rules
+
+paymentOrchestrator --> walletContract : reserve / release / ledger
+paymentOrchestrator --> catalogContract : biller service details
+paymentOrchestrator --> feeContract : fees and promotions
+paymentOrchestrator --> fraudContract : risk assessment
+paymentOrchestrator --> billerContract : inquiry / payment / status
+paymentOrchestrator --> paymentDomain : lifecycle and idempotency
+paymentOrchestrator --> paymentProcessingEvent : publishes PaymentProcessing
+paymentOrchestrator --> paymentCompleted : publishes PaymentCompleted
+paymentOrchestrator --> paymentRefundedEvent : publishes PaymentRefunded
+
+accountsDomain ..|> walletContract
+catalogDomain ..|> catalogContract
+feesDomain ..|> feeContract
+fraudDomain ..|> fraudContract
+integrationDomain ..|> billerContract
+notificationsDomain ..|> notificationContract
+reconciliationDomain ..|> reconciliationContract
+paymentDomain ..|> auditContract
+
+paymentProcessingEvent --> notificationsDomain : consumed by PayLink.Notifications
+paymentCompleted --> notificationsDomain : consumed by PayLink.Notifications
+paymentRefundedEvent --> notificationsDomain : consumed by PayLink.Notifications
+paymentCompleted --> reconciliationDomain : consumes relevant outcome
+paymentCompleted --> paymentDomain : records financial event
+
+efPersistence ..> accountsDomain : persists module-owned data
+efPersistence ..> catalogDomain : persists module-owned data
+efPersistence ..> paymentDomain : persists module-owned data
+efPersistence ..> integrationDomain : persists module-owned data
+efPersistence ..> feesDomain : persists module-owned data
+efPersistence ..> fraudDomain : persists module-owned data
+efPersistence ..> notificationsDomain : persists module-owned data
+efPersistence ..> reconciliationDomain : persists module-owned data
+efPersistence --> postgres : EF Core / PostgreSQL
+
+infrastructureLayer ..> contracts : implements contracts
+billerInfrastructure ..|> billerContract
+notificationInfrastructure ..|> notificationContract
+cardInfrastructure ..> walletContract : card top-up
+settlementInfrastructure ..> reconciliationContract : settlement input
+
+electroAdapter ..|> billerContract
+aquaAdapter ..|> billerContract
+topUpAdapter ..|> billerContract
+netAdapter ..|> billerContract
+billerInfrastructure --> electroAdapter
+billerInfrastructure --> aquaAdapter
+billerInfrastructure --> topUpAdapter
+billerInfrastructure --> netAdapter
+
+electroAdapter --> electroCo : REST
+aquaAdapter --> aquaCo : XML/SOAP-like HTTP
+topUpAdapter --> topUpNet : REST
+topUpNet --> topUpAdapter : asynchronous callback
+netAdapter --> netCo : batch CSV
+
+notificationInfrastructure --> smsProvider : SMS
+notificationInfrastructure --> pushProvider : Push
+notificationInfrastructure --> emailProvider : Email
+cardInfrastructure --> cardSystem : simulated card top-up
+
+electroCo --> settlementInfrastructure : settlement file
+aquaCo --> settlementInfrastructure : settlement file
+topUpNet --> settlementInfrastructure : settlement file
+netCo --> settlementInfrastructure : batch settlement file
+
+docker ..> backend : packages runtime
+docker ..> postgres : runs database locally
+githubActions ..> backend : builds and verifies
+githubActions ..> xunit : runs tests
+
+note right of backend
+  Modular monolith rules:
+  - One deployable backend application.
+  - Each module owns its business logic,
+    contracts and persistence responsibilities.
+  - Modules do not access another module's
+    internal tables or repositories directly.
+  - Cross-module communication uses contracts
+    or internal in-process events.
+end note
+
+note right of domainLayer
+  Dependency direction points inward:
+  Presentation -> Application -> Domain.
+  Domain does not depend on Infrastructure
+  or Presentation.
+end note
+
+note right of paymentCompleted
+  PaymentProcessing, PaymentCompleted, and
+  PaymentRefunded are in-process events published
+  by PayLink.Payments and consumed by
+  PayLink.Notifications.
+  No Kafka, RabbitMQ, or external broker
+  is introduced in Phase 1.
+end note
+
+note bottom of postgres
+  Shared PostgreSQL database.
+  Logical ownership remains separated by module;
+  shared storage does not create direct cross-module
+  repository access.
+end note
+
+note bottom of domainLayer
+  Initial table ownership:
+  Accounts & Wallet: Account, Wallet, LedgerEntry, Hold, TopUp.
+  Biller Catalog: Biller, BillerService, RequiredField.
+  Payment Processing: Payment, PaymentStatusHistory,
+  RefundRequest, IdempotencyKey, AuditEvent.
+  Biller Integration: BillerIntegration, BillerCallback.
+  Fees & Commissions: FeeRule, Promotion, Commission.
+  Fraud Checks: FraudRule, FraudAssessment, ConfigSetting.
+  Notifications: Notification.
+  Reconciliation: SettlementFile, ReconciliationRun,
+  ReconciliationItem.
+  Auditing is owned by Payment Processing, not a ninth module.
+end note
+
+@enduml

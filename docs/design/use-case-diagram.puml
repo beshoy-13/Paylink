@@ -1,0 +1,215 @@
+@startuml PayLink Use Case Diagram
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor Customer as customer
+actor Agent as agent
+actor Admin as admin
+actor "Support Employee" as support
+actor "Biller Systems" as billers
+actor "Notification Provider" as notifications
+actor "Simulated Card Payment System" as cards
+actor Scheduler as scheduler
+
+rectangle "PayLink System" {
+    package "Customer and Account Management" {
+        usecase "Register Account" as register
+        usecase "View Wallet Balance" as balance
+        usecase "View Transaction History" as history
+        usecase "Top Up Wallet" as topup
+        usecase "Browse Billers and Services" as browse
+        usecase "View Required Payment Fields" as fields
+        usecase "Inquire About Bill" as inquire
+        usecase "Request Refund" as request_refund
+    }
+
+    package "Wallet and Top-Up Operations" {
+        usecase "Process Card Top-Up" as card_topup
+        usecase "Process Agent Cash Top-Up" as cash_topup
+        usecase "Record Top-Up Ledger Entries" as record_topup
+        usecase "Validate Top-Up" as validate_topup
+        usecase "Maintain Ledger Consistency" as ledger_consistency
+    }
+
+    package "Payment Processing" {
+        usecase "Pay Bill" as pay_bill
+        usecase "Pay Bill on Behalf of Customer" as pay_agent
+        usecase "Enforce Idempotency" as idempotency
+        usecase "Validate Payment State Transitions" as state_transition
+        usecase "Record Financial Audit Event" as financial_audit
+        usecase "Run Fraud Checks" as fraud_checks
+        usecase "Check Single Payment Limit" as single_limit
+        usecase "Check Daily Payment Limit" as daily_limit
+        usecase "Check Velocity Rule" as velocity
+        usecase "Check Account Status" as account_status
+        usecase "Block Account Temporarily" as block_temporary
+        usecase "Calculate Fees" as fees
+        usecase "Apply Promotions" as promotions
+        usecase "Reserve Funds" as reserve
+        usecase "Release Reserved Funds" as release
+        usecase "Record Hold Ledger Entry" as hold_ledger
+        usecase "Record Hold Release Ledger Entry" as release_ledger
+        usecase "Record Payment Ledger Entries" as payment_ledger
+        usecase "Send Biller Payment Request" as send_payment
+        usecase "Process Biller Response" as biller_response
+        usecase "Handle Payment Timeout" as timeout
+        usecase "Mark Payment as Unknown" as unknown
+        usecase "Re-query Unknown Payment" as requery
+        usecase "Calculate Agent Commission" as agent_commission
+        usecase "Record Commission" as record_commission
+    }
+
+    package "Biller Integration and Callbacks" {
+        usecase "Process Bill Inquiry Request" as inquiry_request
+        usecase "Process Biller Inquiry Response" as inquiry_response
+        usecase "Receive Biller Callback" as callback
+        usecase "Validate Biller Callback" as validate_callback
+        usecase "Ignore Duplicate Callback" as duplicate_callback
+        usecase "Update Payment from Callback" as update_callback
+        usecase "Import Settlement File" as settlement
+    }
+
+    package "Notifications" {
+        usecase "Send SMS Notification" as sms
+        usecase "Send Push Notification" as push
+        usecase "Send Email Notification" as email
+        usecase "Retry Failed Notification" as retry_notification
+        usecase "Mark Notification as Undelivered" as undelivered
+    }
+
+    package "Administration and Support" {
+        usecase "Upgrade Verification Level" as upgrade
+        usecase "Manage Billers and Services" as manage_billers
+        usecase "Configure Fees and Promotions" as configure_fees
+        usecase "Configure Payment Limits" as configure_limits
+        usecase "Search Payment by Reference" as search_payment
+        usecase "View Full Payment History" as full_history
+        usecase "Block Account" as block_account
+        usecase "Unblock Account" as unblock_account
+        usecase "Approve Refund" as approve_refund
+        usecase "Process Refund" as process_refund
+        usecase "Record Refund Ledger Entry" as refund_ledger
+        usecase "Record Administrative Audit Event" as administrative_audit
+        usecase "View Daily Statistics" as statistics
+    }
+
+    package "Reconciliation" {
+        usecase "Reconcile Payments" as reconcile
+        usecase "Generate Reconciliation Report" as reconciliation_report
+    }
+}
+
+customer -- register
+customer -- balance
+customer -- history
+customer -- topup
+customer -- browse
+customer -- fields
+customer -- inquire
+customer -- pay_bill
+customer -- request_refund
+
+agent -- cash_topup
+agent -- pay_agent
+
+admin -- manage_billers
+admin -- upgrade
+admin -- configure_fees
+admin -- configure_limits
+admin -- statistics
+
+support -- search_payment
+support -- full_history
+support -- block_account
+support -- unblock_account
+support -- approve_refund
+
+billers -- inquiry_request
+billers -- inquiry_response
+billers -- send_payment
+billers -- biller_response
+billers -- callback
+billers -- settlement
+
+notifications -- sms
+notifications -- push
+notifications -- email
+cards -- card_topup
+scheduler -- requery
+scheduler -- retry_notification
+scheduler -- reconcile
+
+topup ..> card_topup : <<include>>
+topup ..> validate_topup : <<include>>
+topup ..> record_topup : <<include>>
+topup ..> ledger_consistency : <<include>>
+card_topup ..> validate_topup : <<include>>
+card_topup ..> record_topup : <<include>>
+cash_topup ..> validate_topup : <<include>>
+cash_topup ..> record_topup : <<include>>
+cash_topup ..> ledger_consistency : <<include>>
+record_topup ..> ledger_consistency : <<include>>
+
+browse ..> fields : <<include>>
+inquire ..> inquiry_request : <<include>>
+inquire ..> inquiry_response : <<include>>
+inquire ..> fees : <<include>>
+
+pay_bill ..> idempotency : <<include>>
+pay_bill ..> state_transition : <<include>>
+pay_bill ..> fraud_checks : <<include>>
+pay_bill ..> fees : <<include>>
+pay_bill ..> promotions : <<include>>
+pay_bill ..> reserve : <<include>>
+pay_bill ..> payment_ledger : <<include>>
+payment_ledger ..> hold_ledger : <<include>>
+release ..> release_ledger : <<include>>
+pay_bill ..> send_payment : <<include>>
+pay_agent ..> pay_bill : <<include>>
+agent_commission ..> record_commission : <<include>>
+
+fraud_checks ..> single_limit : <<include>>
+fraud_checks ..> daily_limit : <<include>>
+fraud_checks ..> velocity : <<include>>
+fraud_checks ..> account_status : <<include>>
+block_temporary ..> velocity : <<extend>>
+timeout ..> send_payment : <<extend>>
+unknown ..> timeout : <<extend>>
+requery ..> unknown : <<extend>>
+release ..> reserve : <<extend>>
+agent_commission ..> pay_bill : <<extend>>
+record_commission ..> financial_audit : <<include>>
+payment_ledger ..> financial_audit : <<include>>
+
+callback ..> validate_callback : <<include>>
+callback ..> duplicate_callback : <<include>>
+callback ..> update_callback : <<include>>
+duplicate_callback ..> callback : <<extend>>
+update_callback ..> payment_ledger : <<include>>
+
+sms ..> pay_bill : <<extend>>
+push ..> pay_bill : <<extend>>
+email ..> pay_bill : <<extend>>
+retry_notification ..> sms : <<extend>>
+retry_notification ..> push : <<extend>>
+retry_notification ..> email : <<extend>>
+undelivered ..> retry_notification : <<extend>>
+
+approve_refund ..> process_refund : <<include>>
+process_refund ..> refund_ledger : <<include>>
+refund_ledger ..> financial_audit : <<include>>
+
+reconcile ..> settlement : <<include>>
+reconciliation_report ..> reconcile : <<extend>>
+manage_billers ..> administrative_audit : <<include>>
+configure_fees ..> administrative_audit : <<include>>
+configure_limits ..> administrative_audit : <<include>>
+block_account ..> administrative_audit : <<include>>
+unblock_account ..> administrative_audit : <<include>>
+approve_refund ..> administrative_audit : <<include>>
+search_payment ..> administrative_audit : <<include>>
+full_history ..> administrative_audit : <<include>>
+statistics ..> administrative_audit : <<include>>
+
+@enduml
